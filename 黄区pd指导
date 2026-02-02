@@ -1,0 +1,470 @@
+Burbank ap pd 配置和通路解析 
+1 说明
+1.1 目的 
+本文档描述了 BBK 版本 PP2PD 模块周边接口和配置，主要用于新增模组支持 PP2PD
+功能的开发参考。
+2 适配说明
+2.1 整体架构 
+图 1 AP PD 整体通路
+AP 侧 PD 主要指的是 pp2pd 算法库在 ap 侧集成，需要将 ppraw 图送到 ap 侧，调用
+pp2pd 软件算法计算出 pd 结果，再下发给 firmware 侧。
+HAL 创建 PP2PDFilter 图谱，负责主要流程调度，创建轮转 buffer 用于保存 ppraw 和
+configparam，每一个单独的 sensor 创建单独的适配层，用于屏蔽不同 sensor 之间的差异，
+最终调用算法完成计算，并将结算结果通过 subcmd 下发给 firmware 侧。
+Firmware 侧完成具体 pd 参数的配置，数据的转换等；
+Sensor 输出具体的 ppraw 图。
+Custom 侧配置具体的 pd 能力。
+2.2 Hal 侧 pd 适配 
+AP 侧 pd 主要要增加图谱，增加 pp2pdfilter，这部分主要需要 hal 侧的同事配合修改。
+主要涉及 odm 配置信息修改和 pp2pd 适配层适配。
+2.2.1 依赖信息检查 
+Pp2pdfilter 适配和修改 
+这块主要是 pp2pdfilter 的适配修改，hal 侧修改成新架构之后，hal 侧的 pp2pdfilter 有
+几个 bug 修改，这部分是公共的，后续平台不需要再去修改。主要负责将收到的 ppraw 码流
+和 pdconfigparam 参数信息送给对应 sensor 的适配层，再从适配层获取 pd 结果，调用 subcmd
+发送 pd 结果给 isp 侧
+仓：hisi/ap/hardware/camera_hal
+文件路径：mm_platform/components/preproc/pp2pd/Pp2pdFilter.cpp
+核心调度函数：Pp2pdFilter::OnProcessBufferGroup
+注意点：
+1、ppraw 的 dump 可以在这块增加
+#include "DumpBuffer.h"
+DumpBuffer::DumpBufferString transformIn = 
+{DUMP_PATH,"transform_in", ".raw"};
+DumpBuffer::DumpIBuffer(ispBuffer, 
+transformIn,ispBuffer->GetSize());
+调用标准的接口 dump pd 结果 保存在 img 文件中
+2、跳帧也在这块处理 利用 pdconfigparam 中的 skipframe 标识，可以直接跳过当帧的处
+理，例如 60fps 可以跳过一帧 改为 30fps
+2.2.2 odm 配置信息 
+Odm 仓的修改主要用于控制产品以及各 sensor 是否支持 PD。
+仓：hisi/odm/burbank
+1、 GRAPH_PRIVATE_CAPABILITIES_SUPPORT_PP2PD
+产品侧 PD 通路开关，需要设置为 1，代表该产品支持 PD，该产品如果有支持 AP PD 的
+模组，就需要把这个参数打开；
+文件路径：LNA/camera/etc/hal_repository/product/capabilities/GraphSupport.xml
+2、 各 Sensor 侧需要配置单独的 PD 开关和能力(SensorHalCap.xml)
+文件路径：
+LNA/camera/etc/hal_repository/sensor/capabilities/C856MMJ/SensorHalCap.xml
+HAL_PRIVATE_PREPROC_PP2PD_INFO 各 sensor PD 能力的开关，第一个参数 1 代表支持
+PD，第二个参数 16，第三个参数 10 代表 10 个轮转 buffer，三个参数的轮转 buffer 个数必
+须保持一致；
+HAL_PRIVATE_PREPROC_PP2PD_ISP_SIZE Ppraw 轮转 buffer 的大小和个数，宽高填写支持
+的最大宽高；
+HAL_PRIVATE_PREPROC_PP2PD_MCU_SIZE 填充 Pd 配置信息，主要包括 ae 参数、pd 配
+窗、fnumber、code 等信息，默认是 32k；
+轮转 buffer 主要包括两部分，其一为 ISP buffer 主要用于传送 ppraw 码流，另一个为 MCU
+buffer，主要用于传送 pd 配置信息等；
+AFSTAT 相关的配置需要删除，不然可能会有冲突
+3、 删除不必要的配置，主要是 AFStat 的（可选，如果没有的话，就不涉及）
+4、 平台默认不会自动编译 pp2pd 算法库，需要修改 make 文件，pp2pd.so 会自动编译到
+/odm/lib64 目录下
+5、 三方库的配置
+三方 pp2pd 库可选择两种方式将其编入 ODM 仓，确保能够调用到算法库
+1）：通过直接合入 ODM 仓的方式完成，如：
+2）：选择云上下载的方式完成(会在版本编译期间，在云上OSTM入库处下载到ODM仓)，
+配置方式如下：
+http://mgit-tm.rnd.huawei.com/#/c/26184471/3/odm/charlotte/LEM/LEM.mk
+2.2.3 适配层修改 
+AP 侧 PD 每个模组都会有单独的适配文件，用于屏蔽不同的模组差异，调用 PP2PD 算
+法，后续不同的平台新增模组，都需要重新新建适配这个文件，好处就是对于不同模组的参
+数可以写死，不需要考虑其他模组。
+仓：hisi/ap/hardware/camera_product
+文件路径：hw_platform/sensor/burbank/blk/c950ouo/c950ouo_pp2pd.cpp （ADA 后主）
+2.2.3.1 整体框架 
+伪代码如下所示：
+1. class xxxPp2pdAlgo : public IPp2pdAlgo {
+2. public:
+3. explicit xxxPp2pdAlgo(std::shared_ptr<ISensorSpec> spec) {
+4. xxx // 初始化参数
+5. }
+6. int Init() override;
+7. int DeInit() override;
+8. int Process(Pp2pdInput *input, Pp2pdOutput *output) override;
+9. int Update(Pp2pdInput *input) override;
+10. private:
+11. xxx // 私有函数
+12. }
+13.
+14. int xxxPp2pdAlgo:Init()
+15. {
+16. GetOtpInfo(); // 获取 otp 相关参数信息 dcc、pdoffset、spc
+17. LoadLib(); // 加载算法库
+18. InitLib(); // 初始化算法库
+19. }
+20.
+21. int xxxPp2pdAlgo:DeInit()
+22. {
+23. UnInitLib(); // 去初始化
+24. close(); // 关闭算法库
+25. }
+26.
+27. int xxxPp2pdAlgo:Process(Pp2pdInput *input, Pp2pdOutput *output)
+28. {
+29. CheckParam(); // 入参检查
+30.
+31. if (rawsize change) { // rawsize 变化重新初始化
+32. RewInit();
+33. }
+34.
+35. if (fnumer change) { // 可选模块 多光圈涉及
+36. ChangeOtp();
+37. }
+38.
+39. if (config change) { // 配窗变化 重新计算配窗
+40. TransPdConfig();
+41. }
+42.
+43. processFunc(); // 调用算法库的 process
+44. }
+2.2.3.2 初始化 
+初始化函数主要完成算法库的加载、算法库的初始化以及 otp 参数的获取。
+1、 otp 参数获取
+这部分主要包括 spc、dcc 以及 offset，调用 spec 的接口获取，这部分具体的实现
+在 c950ouo_spec.cpp 文件中，主要由驱动同事实现。Sensor 本身的 otp 是模组出厂时写
+入的，otp 可能是根据华为自研标定工具标定的，也可能是高通的 otp，对于 ov 的模组
+还可能有 ov 本身的 otp，不同类型的 otp 解析方式是不同的，对于华为自研工具标定的
+otp，直接根据具体的格式获取 otp 数据；spc 也是类似的。
+根据不同类型的 sensor，otp 可能是一组或者是多组。单组的 otp，所有场景下 dcc
+和 offset 是不变的，而多组的 otp，可能是多光圈，不同的光圈下对应一组数据，也可
+能是根据不同的马达位置进行标定的。对于多组的 otp 数据，以 ADA 后主模组可变光
+圈为例，标定了 4 挡光圈的 otp 数据，而实际上是存在 10 组可变光圈的，对于没有标
+定的 otp 数据，就需要用相邻的两组数据进行插值计算了。插值计算可以在适配层进行，
+也可以在 pp2pd 算法侧进行，当前 bbk 模组上都是在适配层进行处理的。
+注意：otp 中的 dcc 数据是和 vcm 相关联的，其中涉及到马达的位宽，如果标定的
+otp 数据的马达位宽和实际使用的马达位宽不一致的话，需要对 dcc 数据按比例转换，
+否则计算出的 defocus 数据错误；
+2、 首先加载算法库，算法库默认目录 /odm/lib64/pp2pd.so
+算法库目前对外提供四个接口函数，如下所示：
+1. // 创建算法库
+2. // sensorName：入参，对应模组的匿名化名字即可
+3. // sensorParam：入参，初始化模组入参，后续有详细介绍
+4. PDErrorCode CreatePdLib(std::string sensorName, const SensorParam &sensorPar
+am);
+5.
+6. // 获取版本号
+7. // sensorName：入参，对应初始化时的模组名字
+8. // version：出参，对应版本号
+9. PDErrorCode GetLibVersion(std::string sensorName, std::string& version);
+10.
+11. // 销毁算法库
+12. // sensorName：入参，对应初始化时的模组名字
+13. void DestroyPdLib(std::string sensorName);
+14.
+15. // 算法库具体执行，每帧调度
+16. // sensorName：入参，对应初始化时的模组名字
+17. // param：入参，对应输入 ppraw 数据 以及 对应的配置参数信息
+18. // result：出参，输出对应的 pd 结果
+19. PDErrorCode ExecutePdLib(std::string sensorName, const PDParam ¶m, PDResults
+&result);
+入参参数介绍 SensorParam
+1. struct SensorParam {
+2. /* description of pp information */
+3. SensorPPConfig ppConfig;
+4.
+5. /* spc data */
+6. bool enableHorSpc;
+7. Buffer<float> spcLeft;
+8. Buffer<float> spcRight;
+9. bool enableVerSpc;
+10. Buffer<float> spcUpper; /* for Quad pd */
+11. Buffer<float> spcLower; /* for Quad pd */
+12.
+13. /* dcc data */
+14. bool hasHorSlope;
+15. CalibData horSlope;
+16. bool hasVerSlope;
+17. CalibData verSlope; /* for Quad pd */
+18.
+19. /* pd offset data */
+20. bool hasHorOffset;
+21. CalibData horOffset;
+22. bool hasVerOffset;
+23. CalibData verOffset; /* for Quad pd */
+24.
+25. /* whether eliminate redundant 0s in unsigned short for 10bits raw data
+*/
+26. PDDateFormat format;
+27.
+28. /* confidence coeff */
+29. int slopeCoeff;
+30. int areaCoeff;
+31. };
+32. struct SensorPPConfig {
+33. /* Phase pixel type */
+34. PPType type;
+35. /* Arrangement of pp in pp raw image */
+36. PPPattern pattern[MAX_PP_PATTERN_COUNT];
+37. /* The number of horizontal phase pixels in pattern */
+38. unsigned char horizontalNum;
+39. /* The number of vertical phase pixels in pattern */
+40. unsigned char verticalNum;
+41. /* The interval of horizontal phase pixels in pp raw image */
+42. unsigned char horizontalInterval;
+43. /* The interval of vertical phase pixels in pp raw image */
+44. unsigned char verticalInterval;
+45. /* BLC */
+46. unsigned char blackOffset;
+47. /* PP raw size */
+48. unsigned short rawWidth;
+49. unsigned short rawHeight;
+50. /* max value need pd detection algorithm supported */
+51. unsigned short maxPDValue;
+52. };
+53.
+PPTypo type 用于区分 pd 类型 主要是 sprasePD、DualPD 或者 QuadPd
+PPPattern pattern[]
+unsigned char horizontalNum
+unsigned char verticalNum
+这个三个参数是配合使用的，对应拆分单个 raw 图的格式。
+对于 dualPD，PPRaw 图如下所示，对应的一组数据就是 ，对应的参数就是
+Pattern[0] = left;
+Pattern[1] = right;
+horizontalNum = 2;
+verticalNum = 1;
+对于 sprase 模组，需要根据具体的 pp 点的分布，以下图中的 ppraw 为例，ADA 前置
+tele 模组，对应的一组 ppraw 点就是[L R R L]，是一列不是一行；对应的参数就是：
+Pattern[0] = left;
+Pattern[1] = right;
+Pattern[2] = right;
+Pattern[3] = left;
+horizontalNum = 1;
+verticalNum = 4;
+Unsigned char horizontalInterval 两个 left 或者 right 像素，在一行中的间隔，对于 ADA 后主
+c950 为例，预览图原图尺寸 8192*6144，出图时 binning 一倍，拆分左右图，再增加一倍
+binning，所以两个 left 点时原始预览图上差距是 4
+Unsigned char verticalInterval 只有水平 pd 的不涉及，默认写 1，如果有垂直 pd，参考水平
+方向
+Unsigned char blackOffset 黑电平矫正，一般默认是 64
+Unsigned short rawWidth
+Unsigned short rawHeight 单张 raw 图的大小
+Unsigned short maxPdValue 对应最大的 pd 参数，不同的模组是不一样的，一般可以根据马
+达最大行程与 DCC 计算出，(maxPdCode – minPdCOde) / dccData，maxPdValue 一般不低于该
+值；
+PDDateFormat format 主要针对 ppraw 数据的格式，可能是压缩格式，也可能是非压缩的，
+跟 sensor 出图相关
+Int slopeCoeff
+Int areaCoeff 这两个参数对应 confidence 计算，当前 pdconfidence 主要取决于两个因素，
+第一个是曲线的斜率，斜率越大，confidence 越高，另一个是 pd 配窗的大小，窗越大，
+confidence 越高。而这两个参数对应的是这两个因素的系数，可以自由调整；
+其他参数 spc、slope、offset 对应的是 otp 参数，dual PD 只涉及 Hor，ver 是上下的，主要针
+对 qurd PD；
+注意：slope 数据(dccData)和 offset 数据涉及 knotX 和 knotY，需要计算出每一个 dcc 数据的
+中心坐标，如果 ppraw 和标定时的 size 不同，需要进行坐标转换，否则计算出的 pd 有偏差；
+2.2.3.3 三方库的调用框架-以 OV 库为例 
+文件路径：hw_platform/sensor/burbank/blk/c851pol/c851pol_pp2pd.cpp（ADA 前 tele），
+三 方 库 的 调 用 ， 一 般 需 要 供 应 商 在 提 供 算 法 库 时 ， 对 应 提 供 一 个 头 文 件 如 ：
+ov_pdaf_type3_2017a_lib.h 里面包含了其算法库调用的主要输入输出结构体定义以及算法
+库 运 行 函 数 定 义 ， 其 一 般 包 含 两 个 函 数 ， 一 个 是 process 算 法 库 函 数
+ov_pdaf_type3_2017a_parse_data ， 一 个 是 获 取 算 法 库 版 本 号 函 数
+ov_pdaf_type3_2017a_get_lib_version。
+针对三方算法库需要做的就是保障输入到 process 函数中的输入数据符合算法库要求
+(有异常了需要求助 FAE 同步分析)，其余修改均与自研库类似。
+2.2.3.4 算法执行 
+1、pdconfig 配窗转换
+ISP送上来的 pdconfig 配窗信息是针对预览 raw图的，此处需要转换到对应的 ppraw 上，
+注意是单张 ppraw 上，不是整张；例如：ADA 后主 OV50C，rawsize 4096*3072，pprawsize 
+4096*768，单张 raw 是 2048*768 需要把原始的 ppconfig 配窗转换到 2048*768 的 size 上，
+需要 width/2、height/4，如果 ppraw 存在 offset 时，需要考虑这个 offset；
+每帧需要判断一下 pdconfig 有没有变化，发生变化之后，再去计算；
+2、dcc 插值
+如果当前的模组有多组 dcc 数据，例如可变光圈，或者根据马达位置标定的 dcc，需要
+在每帧起始的位置判断是否需要重新计算 dcc，根据现有的 dcc 数据进行插值获得；具体的
+插值方法不做介绍；后续可能考虑把这部分集成到算法内部，当前还是在适配层；
+3、 重新初始化
+从 2.2.3.1 章节可以看到，当前 pp2pd 算法中的 ppraw 的 size 是在初始化的时候填写的，
+如果 ppraw size 发生变化，需要重新初始化算法库，需要在每帧计算的地方 判断 rawsize 是
+否发生变化，变化的话，需要重新初始化；
+4、 入参配置
+1. struct PDParam {
+2. /* window configure */
+3. WindowConfig windowConfig;
+4.
+5. /* algorithm parameters */
+6. unsigned char binningLevel; /* 0: no binning; 1: binning 2x */
+7. /* only 0 or 1 */
+8. unsigned char sadBinningLevel;
+9.
+10. unsigned int curCode;
+11. int lv;
+12. /* sensor setting related */
+13. unsigned short ppOffsetX;
+14. unsigned short ppOffsetY;
+15. /* pp buffer */
+16. Buffer<void> ppRaw;
+17.
+18. CurBrightnessMode ppBrightnessMode;
+19. };
+WindowConfig windowConfig 对应的配窗信息
+Unsigned char binningLevel 垂直方向的 binning 倍数
+Unsigned char sadBinningLevel 水平方向的 binning 倍数
+Int lv 亮度信息，暂时没有使用
+Unsigned short ppOffsetX
+Unsigned short ppOffsetY ppraw 的偏移，主要用在配窗上，在计算出的配窗信息上增加
+偏移数据
+Buffer<void> ppRaw 对应的 ppRaw 数据
+CurBrightnessMode ppBrightnessMode 亮度参数信息，默认是 normal
+5、 结果获取
+算法输出对应的 pd 结果，defocus 信息可能需要取反；此处还有一个 confidence 最低阈
+值的限制，如果阈值小于某值，可以直接设置 confidence 无效
+2.2.3.5 案例分析 
+1、适配层不能返回 error
+pp2pdfilter 图谱不能返回-1，否则会直接崩溃，因此在 pp2pd 适配层所有的对外接口函
+数不能直接返回 error，如果出错，只需要打印错误，返回 ok；
+调试初期，有些模组可能还无法获取到 otp 数据，导致 pp2pd 算法在最开始初始化的时
+候，GetOtpInfo 失败了，返回了 error，直接回导致 camera 黑屏起不来；
+2、适配侧 Pp2pdOutPut 入参需要提前初始化
+适配层核心调度函数出参 pp2pdOutPut，其中的 result 是个指针，需要在 process 函数
+开始的时候，给他赋值，防止后续因为检验参数等原因直接退出，导致没有赋值，pp2pdfilter
+函数没有对 result 进行空校验，导致崩溃。
+2.3 ISP 侧 PD 适配 
+ISP 侧主要是驱动侧 PD 参数配置以及 firmware 侧 pp2pd 模块通路适配
+2.3.1 驱动侧适配 
+驱动侧修改主要针对 pd 的参数配置，包括 pd 能力、配窗能力、pd 通道等
+仓：hisi/histar_isp/hispv210/custom （不同平台不一样）
+代码路径：sensor/BLK/c876ouo （以 BLK 后主为例）
+2.3.1.1 cis_c876ouo_cfgs.h 
+1、寄存器参数修改
+这个文件前边的参数都是一些底层具体寄存器参数的配置，其中涉及到 pd 通路开关等，
+调试过程中碰到其他 pd 参数都配置好了，导致 isp 侧收不到 ppraw 图，最终发现时寄存器
+参数配置有问题，所以需要提前和驱动确认好，是否配置 ok；
+2、cis_info_t c876ouo_info
+这部分就是具体的 pd 参数配置了，根据不同的场景、模式，可能会有多组不同的 pd 参
+数，我们只需要配置 pdaf 部分，type2 和 type3 配置是不一样的，以下代码行是 type2 的配
+置
+1. .pdaf = {
+2. .enable = 1,
+3. .vc = MIPI_VIRTUAL_CHANNEL_1, \
+4. .dt = MIPI_DATA_TYPE_RAW_10, \
+5. .w = 4160, \
+6. .h = 780, \
+7. .type = PDAF_TYPE2, \
+8. .pd_check_enable = 1,
+9. .active_area = {
+10. .x = 0,
+11. .y = 0,
+12. .width = 4160,
+13. .height = 3120,
+14. .x_offset = 0,
+15. .y_offset = 0,
+16. },
+17. .pd_area = {
+18. .x = 0,
+19. .y = 0,
+20. .width = 4160,
+21. .height = 3120,
+22. .x_offset = 0,
+23. .y_offset = 0,
+24. },
+25. .pp_raw = {
+26. .spc_enable = 0,
+27. .width = 4160,
+28. .height = 780,
+29. .mirror = 0,
+30. },
+31. .pdaf_intensity = PD_CONVERGENCE_STRONGER,
+32. },
+.enable 当前这组是否支持 pd
+.vc
+.dt 这两个参数很关键，用于配置 ppraw 的数据通道，isp 侧需要根据这个区获取 ppraw
+数据，需要和驱动确认好
+.w
+.h 这两个参数也很重要，对应 ppraw 输出的格式，注意此处的大小和最终的 pprawsize
+不一定是相同的，例如 ADA 后主 C950OUO 模组，ppraw size 是 4096 * 768，但是 sensor
+输出 ppraw 时不是按照一行 4096 个字节进行输出的，而是一行输出 1024，共 3072 行
+数据输出，所以此时 w=1024 h=3072，这个再 sensor 手册中是有的，需要找驱动确认
+.type 就是 pd 类型，ap 侧 pd 只涉及 type2 和 type3
+.active_area 预览图的区域
+.pd_area pp 点的区域，可能和预览图是有偏移的
+.pp_raw 实际的 ppraw 参数信息，spc_enable 对应是否支持 spc，width 和 height 就是最
+终的 ppraw size，这个就是最终的整张 ppraw 的大小，和 sensor 输出的格式没有关系了；
+.mirror 是否需要镜像处理，这个地方的 mirror 暂时没有用到
+.pdaf_intensity PD 本身的能力 对于 dual 或者 qurdpd 都是 stront
+Type3 的参数如下所示：
+1. .pdaf = {
+2. .enable = 1,
+3. .vc = MIPI_VIRTUAL_CHANNEL_0,
+4. .dt = MIPI_DATA_TYPE_USER_7,
+5. .w = C851POL_3264X2448_PDAF_WIDTH,
+6. .h = C851POL_3264X2448_PDAF_HEIGHT,
+7. .type = PDAF_TYPE3,
+8. .active_area = {
+9. // full area
+10. .x = 0,
+11. .y = 0,
+12. .width = 3264,
+13. .height = 2448,
+14. },
+15. // PD area information, get from OV
+16. .pd_area = {
+17. .x = 0,
+18. .y = 0,
+19. .width = 3264,
+20. .height = 2448,
+21. },
+22. .pd_block = {
+23. .pd_count = 4,
+24. .block_size = {
+25. .width = 16,
+26. .height = 16,
+27. },
+28. .pd_coordinate = c851pol_pd_coordinate,
+29. },
+30. .pdaf_intensity = PD_CONVERGENCE_WEAK,
+31. },
+vc、dt 不涉及，没有单独的 ppraw 通路
+w、h 就是最终的 ppraw 的尺寸
+主要的区别体现在 .pd_block 上
+.Pd_count 一组 block 中 pd 点的个数
+.block_size 一组 block 中所有像素的个数
+.pd_coordinate block 中 pd 点的位置
+1. cis_pd_coordinate_t c851pol_pd_coordinate[] = {
+2. { 1, 1, PD_LEFT },
+3. { 1, 5, PD_RIGHT },
+4. { 9, 9, PD_RIGHT },
+5. { 9, 13, PD_LEFT }
+6. };
+以 ADA 前置 tele C851 OV08C 为例进行介绍：
+文档给出的 PD pattern 如下图所示，但是有一条 note：“first 16*16 pattern location is (0,8) 
+for 3264*2448”
+也就是说上图的 pattern 是针对于 3264*2448，并且从(0,8)开始的话，就是上边的 pattern，
+如果需要从(0,0)开始，针对于全图的 pattern，则需要根据重复原理，自己把 pattern 补全
+所以从(0,0)开始的 pattern 就应该入下图所示：
+第一步：首先按照(0,0)起始，拼一个完成的pattern，其中红框对应文档中(0,8)开始的pattern，
+如下所示：
+第二步：结合 sensor 出图时的 mirror 和 flip，进行反转和旋转，以 ADL 上 C851 为例，mirror
+和 flip 都是 true，所以需要对图像进行旋转，如下所示，这个才是 sensor 真正的出图格式
+第三步：选择最终的 pattern，软件侧 pd 算法没有最后一行必须有 pd 点的约束，因此可以
+从任何一行开始，只要和 pd area 匹配就可以，默认选择从(0,0)开始
+对应的 pd_area = {0, 0, 3264, 2448} （宽高必须是 block 的整数倍）
+对应的 coordinate = {{1, 1, right},{1, 5, left}, {9, 9, left},{9,13,right}}
+2.3.1.2 cis_c876ouo_kit.h 
+cis_slave_info_t c876ouo_slave_info 中的 support_pdaf 设置为 SUPPORT
+sensor_pdaf_get_info 改函数是 pp2pd 模块从 cfg 文件中获取 pd 配置信息，就是上边 cfg 文
+件配置的那些
+2.3.1.3 sensor/camkit/drv_cis_kit_pdaf_impl.c 
+这个是个平坦公共的文件，需要增加 pd 能力的获取以及 pd 配窗能力的获取，PD 配窗
+能力其实对于 type1 的模组是由 sensor 本身能力决定的，配置到 sensor 模块是没有问题的。
+但是对于 type2 和 type3 的模组，其实应该是有 pp2pd 硬件算法或者软件算法的能力来决定
+的，所以其实配置到 custom 仓不是很合理，但是当前是配置到了 custom 仓
+2.3.1.4 c876ouo_pdaf.h 
+配置 pd 配窗能力，PD 配窗能力其实对于 type1 的模组是由 sensor 本身能力决定的，配
+置到 sensor 模块是没有问题的。但是对于 type2 和 type3 的模组，其实应该是有 pp2pd 硬件
+算法或者软件算法的能力来决定的，所以其实配置到 custom 仓不是很合理，但是当前是配
+置到了 custom 仓。
+2.3.1.5 cis_c851pol.c
+对于 type3 的模组还需要配置 crop 参数，并且在这个文件配置函数获取，主要是由驱
+动侧进行配置，并且在 isp 侧调用
+2.3.2 firmware 修改（ISP 同事配置，只是作为检查项） 
+Firmware 就是 isp 侧 pd 核心通路的修改了，主要包括 isp 侧适配和 pp2pd 模块适配。
+仓：hisi/histar_isp/hispv210/firmware
+这部分应该由 isp 侧的同事进行适配，BBK 上老框架，配置和新框架有差异，以老框架
+为例进行介绍。主要是配置 isp/feature/pdaf_feature.c 文件，这个文件就是用来填充 ppraw
+数据以及 config 参数信息的；注意：isp 侧需要对接收到的共享内存信息进行地址转化，以
+及判空
+添加 pd_data_t 这个就是上层下发下来用来传输数据的地址，isp 对应的 ppraw 数据，
+mcu 对应的 ppconfig 参数信息
+Pdaf_get_data_addr 该函数是用来填写接受 ppraw 数据地址的函数，只需要将接收到的
+ppraw 地址信息填充到 pdaf_addr 参数中即可。
+pdaf_set_sf1_epf_config 用于从 af 侧获取 pdconfig 参数信息，拿到 mcu 地址之后，进行
+转换，调用 pp2pd 模块提供的 ai_pp2pd_get_pd_config 函数填充参数信息

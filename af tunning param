@@ -1,0 +1,441 @@
+chromatix_af	second layer	third layer	fourth layer	fifth layer	sixth layer	comments	default_value	range	mark
+af_tunning_param_t	gesture_code_offset					姿势差	0x40	[0,128]	"最大姿势差，一般由产线收集；(gesture_code_offset标定说明将手机固定在三脚架上，手机摄像头水平放置测试1m处物体的准焦位置，记录为code_h；然后将手机摄像头向上放置测试上方1m处物体的准焦位置记录为code_u;最后将手机摄像头向下放置测试下方1m处物体的准焦位置记录为code_d；求取ABS(code_h – code_u)和ABS（code_h – code_d），两者之间的最大值作为gesture_code_offset值)
+产线将手机朝上和朝下与水平方向对同一距离的code差值；
+AF使用该值乘以gsensor得到的三角关系得到朝向某个位置的对焦行程修正范围。"
+	extend_code					马达范围外扩值	0x40	[0,96]	AF算法在otp_start位置外扩值，一般在无穷远处需要外扩一定的范围，以对准无穷远处。
+	laser_trans_code_err_max					"激光从深度转为code的最大误差
+"	64	[0,96]	激光从深度转为code的最大误差
+	af_tunning_trigger_param_t	af_tunning_trigger_motion_param_t	slow_motion_th			手机慢速运动的阈值（根据gyro来判断）	3.0f	一般不调整，建议值[2.0f, 4.0f]	"连续10个gyro数据的积分（相当于角度），如果超过该阈值，则表示当前有慢速运动。
+该值越大，则越难检测到慢速运动；该值越小，则更容易检测到慢速运动。"
+			fast_motion_th			手机快速运动的阈值（根据gyro来判断）	6.0f	一般不调整，建议值[4.0f, 8.0f]	"连续10个gyro数据的积分（相当于角度），如果超过该阈值，则表示当前有快速运动。
+该值越大，则越难检测到快速运动；该值越小，则更容易检测到快速运动。"
+			change_angle_th			手机角度发生变化的阈值（根据gyro来判断）	5.0f	一般不调整，建议值[3.0f, 7.0f]	"连续10个gyro数据的积分（相当于角度），如果超过该阈值，则表示当前手机运动有一定角度，则应该运动重新触发。
+该值越大，则越难检测到角度发生变化；该值越小，则更容易检测到角度发生变化。"
+			change_big_angle_th			手机角度发生很大变化的阈值（根据gyro来判断）	15.0f	一般不调整，建议值[10.0f, 20.0f]	"连续10个gyro数据的积分（相当于角度），如果超过该阈值，则表示当前手机运动有很大角度，则应该运动重新触发,并且此情况下，考虑到姿势差和场景变化，此次运动触发不能被取消掉。
+该值越大，则越难检测到大角度；该值越小，则更容易检测到大角度。"
+			gdiff_th			手机慢速运动的阈值（根据gsensor来判断）	200	一般不调整，建议值[180, 220]	"连续5个gsensor数据x、y、z三个方向的最大值（相当于运动加速度），如果超过该阈值，则表示当前有慢速运动。
+该值越大，则越难检测到慢速运动；该值越小，则更容易检测到慢速运动。"
+			motion_stable_cnt_th			手机稳定次数的阈值	10	一般不调整，建议值[0, 20]	"该阈值为10表示10个gyro/gsensor来判断手机稳定。由于
+10ms获取一次gyro/gsensor数据，白天场景一帧33ms，表示约3~4帧来gyro和gensor稳定。该值越大，判断手机稳定帧数越久，运动触发越晚；该值越小，判断手机稳定越快，运动触发越早。"
+			continuous_motion_th			手机连续运动次数的阈值	200	一般不调整，建议值[150, 300]	"判断手机连续运动的阈值，该阈值为200，表示200个gyro/gsensor数据判断手机连续运动。若手机持续运动则应该运动触发。
+该值越大，则表示连续运动更久才能检测到，运动触发更晚。
+该值越大，则表示连续运动较快检测到，运动触发更早。"
+			phone_on_tripod_th			手机固定三脚架下的阈值（根据gyro判断）	0.1	[0.08, 0.15]	判断一段时间内（10个gyro数据）的gyro，若小于该阈值则表示处于三脚架场景，该阈值主要用于性能测试。
+			gyro_continue_stable_th			手机手持持续稳定的阈值（根据gyro判断）	0.5	[0.4, 0.6]	判断一段时间内（10个gyro数据）的gyro，若小于该阈值则表示处于手持稳定场景，该阈值主要用于手遮挡场景测试。
+			gdiff_hold_th			手机稳定的阈值（根据gsensor来判断）	20	一般不调整，建议值[0, 40]	"根据gsensor判断手机稳定的阈值，若手机gsensor数据x/y/z三个方向最大值小于该阈值，表示手机稳定。
+该值越大，则手机更容易稳定，运动触发更早。
+该值越小，则手机更难稳定，运动触发更晚。"
+			gdiff_mean_motion_th			手机运动的阈值（根据gsensor来判断）	50	一般不调整，建议值[30, 70]	最新5个gensor数据的最大值（表示最大加速度）大于该阈值，表示手机运动。
+			gdiff_compare_motion_th			手机运动的阈值（根据gsensor来判断）	50	一般不调整，建议值[30, 70]	上一次对焦完成后从compare_start_frame到compare_end_frame帧的gsensor各方向上的最大值，若大于该阈值则表示手机运动。
+			gsen_continue_stable_th			手机稳定阈值（根据gsensor来判断）	8	一般不调整，建议值[6, 10]	多帧gyro数据判断手机稳定的阈值
+			compare_start_frame			运动的对比数据的起始帧	3	一般不调整，[0, 10]	运动的对比数据的起始帧，上一次对焦结束后帧数清0后开始统计。该值越大，则起始帧计算越靠后。
+			compare_end_frame			运动的对比数据的结束帧	7	一般不调整，[compare_start_frame, compare_start_frame + 10]	运动的对比数据的结束帧,该值越大，则统计数据越多。
+			gsen_unstable_cnt_th			手机慢速运动帧数的阈值（根据gensor来判断）	2	一般不调整，[0， 10]	若手机连续运动超过该阈值，则手机发生慢速运动。
+		af_tunning_trigger_scene_param_t	compare_start_frame			场景的对比数据的起始帧	3	一般不调整，[0, 10]	场景的对比数据的起始帧，上一次对焦结束后帧数清0后开始统计。该值越大，则起始帧计算越靠后。
+			compare_end_frame			场景的对比数据的结束帧	7	一般不调整，[compare_start_frame, compare_start_frame + 10]	场景的对比数据的结束帧,该值越大，则统计数据越多。
+			compare_start_frame_low			场景的对比数据的起始帧（低照度下）	3	一般不调整，[0, 10]	低照度下，场景对比数据的起始帧，上一次对焦结束后帧数清0后开始统计。该值越大，则起始帧计算越靠后。
+			compare_end_frame_low			场景的对比数据的起始帧（低照度下）	7	一般不调整，[compare_start_frame_low, compare_start_frame_low + 10]	低照度下，场景对比数据的结束帧,该值越大，则统计数据越多。
+			ae_unstable_extra_frames			对焦完成后，AE不稳定的帧数	10	一般不调整，[0, 30]	对焦完成后，会释放AE，对FV和亮度直方图造成影响，所以会设置判断AE不稳定的帧数阈值。
+			mean_to_comp_xcoef_th			亮度直方图的协方差阈值	900	一般不调整，[700, 1000]	该值除以1000表示亮度直方图变化的百分比，若当前亮度变化大于该阈值，则表示场景发生改变。
+			curr_to_curr_contrast_stable_th			fv数据稳定的阈值	5	一般不调整，[1, 20]	从运动到静止触发阈值，该值表示fv数据稳定的百分比，若连续几帧图像fv的变化量小于该阈值，则表示场景稳定。该值越大，场景更容易稳定，可能导致过早触发；该值越小，则场景越难稳定，可能较难触发。
+			curr_lum_th[AF_TRIGGER_SCENE_TH_LEN]			AE luma阈值	{10,35,0,0}	"一般不调整，cur_lum_th[0]：[0, 35]
+cur_lum_th[1]：[10, 50]
+cur_lum_th[2]:未用到
+cur_lum_th[3]:未用到"	目前只用到数组前面两个，低照度下，若当前ae_lum<cur_lum_th[i],则使用对应的hist_th值，如curr_to_comp_hist_th[i], mean_to_comp_hist_th[i], curr_to_old_hist_th[i]
+			mean_to_comp_hist_th[AF_TRIGGER_SCENE_TH_LEN]			根据亮度直方图判断场景变化的阈值	{970,920,850,300}	一般不调整，[0， 1000]	这个值除以1000表示亮度直方图变化的阈值，若前后亮度直方图的协方差变化小于该阈值，则表示场景发生变化。该阈值越大，越容易判断场景发生变化；该阈值越小，越难判断场景发生变化。
+			curr_to_old_hist_th[AF_TRIGGER_SCENE_TH_LEN]			根据亮度直方图判断场景变化的阈值	{990,990,990,990}	一般不调整，[800, 1000]	这个值除以1000表示亮度直方图稳定的阈值，若前后亮度直方图的协方差变化大于该阈值，则表示场景稳定。该阈值越大，越难判断场景稳定；该阈值越小，越容易判断场景稳定。
+		af_tunning_trigger_zoom_param_t	zoom_stable_cnt_th			zoom变化后稳定的帧数阈值	8	一般不调整，[1, 20]	图像倍率发生变化时，倍率稳定的帧数阈值，当倍率稳定一定帧后，开始触发。该值越大，则zoom后需等待一段时间后触发；该值较小，则zoom可能在用户操作过程中就触发。
+		af_tunning_trigger_face_param_t	need_pull_down_rect			判断是否需要下拉人框到身体	1	一般不调整，[0,1]	计算出一个框到身体的框
+			need_smooth_rect			判断是否需要对人脸窗进行时域滤波	0	一般不调整，[0,1]	 一般情况该参数设置为0
+			smooth_base				8		未用到，待删除。
+			face_window_edge_threshold			判断人脸窗中心位置在屏幕中的位置作为是否进入人脸对焦	0.8	[0,1]	如果设置为0.8，那么人脸中心点要在屏幕以中心开始的80%区域内进入人脸对焦
+			face_window_size_threshold			进入人脸对焦的最小人脸大小	65	[0,1080]	[0,1080]
+			need_wait_ae			在trigger模块是否需要等待ae稳定	1	一般不调整，[0,1]	0:不需要等待ae稳定，1：需要等待ae稳定，建议不要调整
+			ae_lum_th			等待ae稳定的阈值	6	一般不调整，[0,10]	ae当前lum和测光lum值的差值
+			wait_ae_cnt			等待ae稳定的帧数	15	一般不调整，[0,20]	当ae收敛超过了预设帧数，那么不在等待ae稳定。
+			face_delta_lenth			人脸框大小变化阈值	40	[10,50]	前后两帧的人脸框大小变化大于该阈值，认为人脸是不稳定的
+			face_changing_ratio			人脸框大小变化率	0.2	[0.1,0.2]	前后两帧的人脸框大小变化率大于该阈值，认为人脸是不稳定的
+			face_stable_ratio			人脸框稳定阈值	0.1	[0.05,0.1]	前后两帧人脸框大小变化率小于该阈值，认为人脸稳定
+			face_retrigger_ratio_min			设置人脸最小retrigger的阈值	0.15	一般不调整，0.15	不建议修改
+			face_retrigger_ratio_max			设置人脸最大retrigger的阈值	0.2	一般不调整，0.2	不建议修改
+			face_appear_cnt			如果人脸进入了disappearing状态后，重新出现了人脸多少帧后就切换到stable状态	3	一般不调整，[3,10]	该值的推荐值设置为3
+			face_disappearing_cnt			人脸消失多少帧后人脸进入disappearing状态	5	一般不调整，[3,10]	该值设置得越大人脸消失（无人脸框或者超出ROI区域）后从人脸对焦切换到中心caf对焦越慢
+			face_disappeared_cnt			人脸从disappearing状态切换到disappeared状态	20	一般不调整，[3,20]	该值设置得越大人脸消失后从人脸对焦切换到中心caf对焦越慢
+			face_stable_cnt			人脸框连续稳定多少帧后认为人脸问题	3	一般不调整，[3,10]	该值设置得越大，那么人脸对焦会越稳定，同时整个对焦时间也会越长
+			face_unstable_cnt			人脸框连续不稳定多少帧后会从稳定状态切换到不稳定装	4	一般不调整，[3,10]	该值设置越大会导致对人脸跟踪越差，设置越小可能会引起反复对焦
+			searching_type			cdaf搜索类型	0	一般不调整，[0,4]	"0:使用人脸窗作为默认搜索窗口
+1：使用身体窗作为搜索窗口
+2：使用landmark作为默认搜索窗口
+3：使用ap窗作为默认搜索窗口
+4：使用eye窗作为默认搜索窗口"
+			rect_scaling_ratio				0.8		未用到，待删除。
+			common_scale_ratio			缩小人脸框的阈值	0.8	一般不调整，[0,1]	0.8：以中心点为基础缩小人脸框到原来的80%
+			rect_narraw_type			设置人脸缩框的方向	1	一般不调整，[0,1]	"1:只对人脸窗的宽度进行缩框
+0:对宽高都进行缩框"
+		af_tunning_trigger_laser_param_t	laser_distance_infinite_th			"激光给出距离的无穷远阈值
+"	1500	一般不调整	"trigger模块，用激光判断距离变化，使用激光触发的阈值。
+"
+			compare_start_frame			激光触发的对比数据的起始帧	1	[0, 10]	激光触发的对比数据的起始帧，上一次对焦结束后帧数清0后开始统计。该值越大，则起始帧计算越靠后。
+			compare_end_frame			激光触发的对比数据的结束帧	3	[compare_sart_frame+1, compare_start_frame+11]	激光触发的对比数据的结束帧,该值越大，则统计数据越多。
+			distance_change_frame_th			激光距离变化的帧数	3	[1, 5]	激光距离变化的帧数阈值；如激光一直给出10cm距离，然后给出1m的距离，连续distance_change_frame_th的帧数则判断激光在变化。
+			distance_trigger_frame_th			激光触发的帧数	7	一般为2 * distance_change_frame_th +1， 以此为基准上下两帧调节。	激光距离变化的帧数阈值；如激光一直给出10cm距离，然后给出1m的距离，连续distance_trigger_frame_th的帧数则判断激光需要触发。
+			normal_distance_stable_th			一般情况下，激光距离稳定的阈值	60	一般不调整	激光触发时候，若激光距离仍然发生变化大于该阈值，则需要等到激光稳定小于该阈值才触发。
+			macro_distance_stable_th			微距下，激光距离稳定的阈值	16	一般不调整	微距情况下，激光触发时候，若激光距离仍然发生变化大于该阈值，则需要等到激光稳定小于该阈值才触发。
+		af_tunning_trigger_ae_param_t	ae_luma_stable_th			自动曝光的luma值稳定阈值	6	一般不调整	trigger的当前帧需要等到AE稳定，若当前ae_luma小于该阈值，则可以触发，否则需要等AE稳定。
+			wait_ae_param_th			自动曝光的稳定帧数阈值	5	一般不调整	trigger的当前帧需要等到AE稳定，若等待一定帧数后，ae_luma仍然无法满足要求，则触发。
+		af_tunning_trigger_pd_param_t	pd_stable_th			PD触发的阈值	0.15	[0.1, 0.2]	PD进行触发时候判断PD波动较小，小于该阈值，则进行触发。
+	af_tunning_movingaf_param_t	phone_moving_push_vcm_code_th				手机运动时，当辅助信息计算出的准焦位置与当前马达位置间差值大于该阈值时，将马达推至离当前马达位置最近且与计算出的准焦位置距离为阈值处	64	[48,72]	阈值，均为运动对焦中使用深度信息进行辅助对焦时，当前马达位置与深度转code计算出的准焦位置间差值的阈值。当激光或dmap给出的准焦位置与当前马达位置间差值大于该阈值时，此次目标马达位置将被设置为由当前马达位置向激光或dmap给出的准焦位置方向上，距激光或dmap给出的准焦位置phone_moving_push_vcm_code_th或phone_stable_push_vcm_code_th处（视当前处于手机静止还是运动状态而定）；若当前马达位置与激光或dmap给出的准焦位置差值在阈值内时，则在运动对焦中不再推动马达。之所以设定这个阈值，是因为使用激光或深度计算出的准焦位置与真实准焦位置间偏差较大，偏差一方面来自于深度转code精度，另一方面来自深度信息与对焦框内物体真实深度间偏差，因此预留下该阈值，使得马达不会在使用深度信息辅助对焦时，推过准焦位置，从而减少拉风箱现象。
+		phone_stable_push_vcm_code_th				手机静止时，当辅助信息计算出的准焦位置与当前马达位置间差值大于该阈值时，将马达推至离当前马达位置最近且与计算出的准焦位置距离为阈值处	64	[48,72]	阈值，均为运动对焦中使用深度信息进行辅助对焦时，当前马达位置与深度转code计算出的准焦位置间差值的阈值。当激光或dmap给出的准焦位置与当前马达位置间差值大于该阈值时，此次目标马达位置将被设置为由当前马达位置向激光或dmap给出的准焦位置方向上，距激光或dmap给出的准焦位置phone_moving_push_vcm_code_th或phone_stable_push_vcm_code_th处（视当前处于手机静止还是运动状态而定）；若当前马达位置与激光或dmap给出的准焦位置差值在阈值内时，则在运动对焦中不再推动马达。之所以设定这个阈值，是因为使用激光或深度计算出的准焦位置与真实准焦位置间偏差较大，偏差一方面来自于深度转code精度，另一方面来自深度信息与对焦框内物体真实深度间偏差，因此预留下该阈值，使得马达不会在使用深度信息辅助对焦时，推过准焦位置，从而减少拉风箱现象。
+	af_tunning_focus_param_t	af_tunning_focus_search_param_t	af_tunning_focus_filter_param_t	low_frequency_filter		低频滤波参数	0	一般不调整	Normal场景滤波器： 0代表低频 1代表高频
+				high_frequency_filter		高频滤波参数	1	一般不调整	点光源场景滤波器： 0代表低频 1代表高频
+				flat_high_frequency_filter		平坦区高频滤波参数	0	一般不调整	平坦区场景滤波器： 0代表低频 1代表高频
+				face_filter		人脸场景滤波参数	0	一般不调整	人脸场景滤波器： 0代表低频 1代表高频
+									
+			af_tunning_focus_judge_down_normal_param_t	focus_judge_high_code		爬山算法状态判断域值计算参数	0x10	一般不调整	爬山算法状态判断域值计算参数，与focus_judge_low_code联合使用；用于判断曲线是否平坦，计算contrast阈值，建议不修改；
+				focus_judge_low_code		爬山算法状态判断域值计算参数	0x4	一般不调整	爬山算法状态判断域值计算参数，与focus_judge_high_code联合使用；用于判断曲线是否平坦，计算contrast阈值，建议不修改；
+				focus_low_contrast		低对比度域值参数	4200	一般不调整	normal场景地对比度域值
+				focus_ultralow_contrast		极低对比度域值参数	1200	一般不调整	normal场景极度低对比度域值
+									
+									
+				down_hill_cnt		DOWN状态计数域值	2	一般不调整	DOWN状态次数域值（爬山算法终止搜索判断条件）
+				step_cnt_for_not_singleframe		非单帧状态下搜索步数域值	2	一般不调整	非单帧（隔帧推马达）状态下搜索步数域值
+				step_cnt_for_singleframe		单帧状态下搜索步数域值	3	一般不调整	单帧（每帧都推马达）状态下搜索步数域值
+									
+			af_tunning_focus_contrast_threshold_t	contrast_threshold_highest		最高对比度域值	0x10000	一般不调整	考虑用户体验场景下，对比度最高域值；根据不同contrast来设置不同阈值，低于该值判断曲线平坦，建议不修改；
+				contrast_threshold_higher		较高对比度域值	0x8000	一般不调整	考虑用户体验场景下，对比度较高域值；根据不同contrast来设置不同阈值，低于该值判断曲线平坦，建议不修改；
+				contrast_threshold_high		高对比度域值	0x4000	一般不调整	考虑用户体验场景下，对比度高域值；根据不同contrast来设置不同阈值，低于该值判断曲线平坦，建议不修改；
+				contrast_threshold_middle		中等对比度域值	0x2000	一般不调整	考虑用户体验场景下，对比度中间域值；根据不同contrast来设置不同阈值，低于该值判断曲线平坦，建议不修改；
+				contrast_threshold_low		低对比度域值	0x1000	一般不调整	考虑用户体验场景下，对比度低域值；根据不同contrast来设置不同阈值，低于该值判断曲线平坦，建议不修改；
+									
+									
+									
+									
+									
+			af_tunning_focus_ux_high_percent_t	high_percent_for_highest_contrast		爬山状态判断域值	0.99f	一般不调整	考虑用户体验场景下，对比度最高域值分支中，爬山状态判断域值；辅助信息有效小步长下设置阈值比例值，低于该值判断曲线平坦，建议不修改；
+				high_percent_for_higher_contrast		爬山状态判断域值	1.02f	一般不调整	考虑用户体验场景下，对比度较高域值分支中，爬山状态判断域值；辅助信息有效小步长下设置阈值比例值，低于该值判断曲线平坦，建议不修改；
+				high_percent_for_high_contrast		爬山状态判断域值	1.03f	一般不调整	考虑用户体验场景下，对比度高域值分支中，爬山状态判断域值；辅助信息有效小步长下设置阈值比例值，低于该值判断曲线平坦，建议不修改；
+				high_percent_for_middle_contrast		爬山状态判断域值	1.04f	一般不调整	考虑用户体验场景下，对比度中间域值分支中，爬山状态判断域值；辅助信息有效小步长下设置阈值比例值，低于该值判断曲线平坦，建议不修改；
+				high_percent_for_low_contrast		爬山状态判断域值	1.05f	一般不调整	考虑用户体验场景下，对比度低域值分支中，爬山状态判断域值
+			af_tunning_focus_face_param_t	step_cnt_from_otp_start			4	一般不调整	判断top code 与 otp start距离域值；物体在无穷远时，top code不能大于otp start + step_cnt_from_otp_start* step
+				judge_down_precent_by_top		DOWN状态判断域值	0.8f	一般不调整，[0，1]	人脸场景下Down状态判断域值
+			af_tunning_focus_judge_down_by_percent_t	contrast_threshold			20000	一般不调整	top contrast判断域值，使用up_threshold_percent还是down_threshold_percent
+				up_threshold_percent		DOWN状态判断域值	85	一般不调整，[0，100]	top contrast小于等于contrast_threshold域值时爬山算法判断DOWN状态域值比例，用于curr contrast与 top contrast除数与该阈值进行比较判断，如果小于该阈值则判断DOWN
+				down_threshold_percent		DOWN状态判断域值	70	一般不调整，[0，100]	top contrast大于contrast_threshold域值时爬山算法判断DOWN状态域值比例，用于curr contrast与 top contrast除数与该阈值进行比较判断，如果小于该阈值则判断DOWN
+			adaptive_step_enable				1	一般不调整	自适应步长开关；
+			af_tunning_focus_search_param_advanced_t	af_tunning_search_zone_param_t	"
+af_zone_top_thd"	Zone区曲线可信度判断域值，域值越大zone区数据越难判断可信，如果可信采用zone曲线搜索	500	一般不调整	Zone区可信度判断域值，当zone区域值最大值大于该域值时，表明zone区fv值可信 ，可以用zone区搜索结果进行准焦判断，否则zone区相关搜索数值不可信（具体不可信条件见af_zone_normal_top_ratio_low 和 af_zone_normal_top_ratio_high）
+					af_zone_normal_top_ratio_low	zone区fv值具体是否可信判断阈值，阈值越大，fv值越容易判断可信，用于zone去曲线可信度判断；	100	一般不调整	在zone区top contrast小于af_zone_top_thd阈值时，在非微距多景深场景，夜晚场景以及非TF场景，zone top contrast * af_zone_normal_top_ratio_low < normal top contrast,则表示zone区fv值不可信
+					af_zone_normal_top_ratio_high	zone区fv值具体是否可信判断阈值，阈值越大，fv值越容易判断可信，用于zone去曲线可信度判断；	500	一般不调整	在zone区top contrast小于af_zone_top_thd阈值时，在非夜景多景深场景下TF，zone top contrast * af_zone_normal_top_ratio_high < normal top contrast,则表示zone区fv值不可信
+					af_zone_low_contrast	Zone区top contrast阈值，以此判断zone区搜索的状态	100	一般不调整	小于该阈值时，直接判断zone区搜索状态为停止，同步保证聚焦状态判断为DOWN，大于该阈值时，zone区状态可能为继续搜索，可能会导致原本DOWN状态发生改变，从而增加搜索范围和步数
+					af_zone_up_percent_105	Zone区判断曲线上升域值，通过阈值判断曲线状态，域值越小越容易判断为上升状态，从而让聚焦搜索继续往下的概率增加，与域值af_zone_up_percent_95联合使用	269	一般不调整	"Zone区搜索状态中，UP状态判断标志位，如果大于该阈值，表示zone曲线处于
+上升状态，域值越小越容易判断为上升状态，从而让聚焦搜索继续往下的概率增加，与域值af_zone_up_percent_95联合使用"
+					af_zone_up_percent_95	Zone区判断曲线上升域值，通过阈值判断曲线状态，域值越小越容易判断为上升状态，从而让聚焦搜索继续往下的概率增加，与域值af_zone_up_percent_105联合使用	243	一般不调整	Zone区搜索状态中，down状态判断标志位，如果大于该阈值，表示zone曲线处于下降状态，域值越小越容易判断为上升状态，从而让聚焦搜索继续往下的概率增加，与域值af_zone_up_percent_105联合使用
+									
+									
+				af_tuning_search_status_judge_param_t	"
+af_wobbling_threshold_1"	Down状态判断域值1	0.9	一般不调整	1.Zone区极度低对比度(详见参数AF_PARAM_ULTRALOW_CONTRAST)下，判断当前曲线为下降状态判断域值(小于域值则down_hill数量增加,down_hill是用于判断整体对焦是否为DOWN状态的变量之一，down_hill数量增加表示对焦整体判断为DOWN的概率越大)。2.极低对比度域值下非小步长Down状态判断域值，该域值主要用于计算zone区波峰是否有效，阈值越大说明同样斜率的下降曲线越容易判断为有效，从而帮助整个聚焦搜索加快收敛。
+									
+					af_wobbling_threshold_2	Down状态判断域值2	0.96	一般不调整	1.Zone区低对比度(详见参数AF_PARAM_ULTRALOW_CONTRAST)下，判断当前曲线为下降状态判断域值(小于域值则down_hill数量增加,down_hill是用于判断整体对焦是否为DOWN状态的变量之一，down_hill数量增加表示对焦整体判断为DOWN的概率越大，从而帮助聚焦搜索加快收敛)。2.非极低对比度阈值下非小步长Down状态判断域值，该域值主要用于计算zone区波峰是否有效，阈值越大说明同样斜率的下降曲线越容易判断为有效，从而帮助整个聚焦搜索加快收敛。
+					"
+af_wobbling_threshold_3"	Down状态判断域值3	0.98	一般不调整	1.Zone区高对比度(详见参数AF_PARAM_ULTRALOW_CONTRAST)下，判断当前曲线为下降状态判断域值(小于域值则down_hill数量增加,down_hill是用于判断整体对焦是否为DOWN状态的变量之一，down_hill数量增加表示对焦整体判断为DOWN的概率越大)。2.点光源场景Down状态判断域值，该域值主要用于计算zone区波峰是否有效，阈值越大说明同样斜率的下降曲线越容易判断为有效，从而帮助整个聚焦搜索加快收敛。
+					"
+af_wobbling_threshold_4"	Down状态判断域值4	0.99	一般不调整	1.zone区除以上三种对比度情况下，判断当前曲线为下降状态判断域值(小于域值则down_hill数量增加,down_hill是用于判断整体对焦是否为DOWN状态的变量之一，down_hill数量增加表示对焦整体判断为DOWN的概率越大)。
+									
+					af_wobbling_threshold_small_step_1	小步长Down状态判断域值	0.95	一般不调整	极低对比度域值下小步长Down状态判断域值，该域值主要用于计算zone区波峰是否有效，阈值越大说明同样斜率的下降曲线越容易判断为有效，从而帮助整个聚焦搜索加快收敛。
+					af_wobbling_threshold_small_step_2	小步长Down状态判断域值	0.98	一般不调整	非极低对比度域值下小步长Down状态判断域值，该域值主要用于计算zone区波峰是否有效，阈值越大说明同样斜率的下降曲线越容易判断为有效，从而帮助整个聚焦搜索加快收敛。
+					af_flat_small_step_down_threshold_1	小步长Down状态判断域值	90	一般不调整	平坦区小步长Down状态判断域值(用于上一步与当前步对比度比较)，阈值越大越容易判断为down状态，加快聚焦搜索快速收敛
+					af_flat_small_step_down_threshold_2	小步长Down状态判断域值	95	一般不调整	平坦区小步长Down状态判断域值(用于top code与当前步对比度比较)，阈值越大越容易判断为down状态，加快聚焦搜索快速收敛
+									
+									
+		af_tunning_focus_wait_param_t	stable_af_init_wait_cnt			stableaf初始化等待帧数	3	一般不调整	初始化stableaf时进行配窗配算子等操作需要等待的帧数
+			moving_af_init_wait_cnt			movingaf初始化等待帧数	3	一般不调整	初始化movingaf时进行配窗配算子等操作需要等待的帧数
+		af_tunning_focus_vcm_param_t	vcm_step			正常搜索步长	32	根据模组物体特性设置	normal对焦的搜索步长；
+		af_tunning_focus_analyze_param	af_tunning_focus_analyze_contrast_t	level_one		最大contrast域值	0x8000	一般不调整	最大contrast域值1，通过域值切换不同slope域值划分
+				level_two		最大contrast域值	0x4000	一般不调整	最大contrast域值2，通过域值切换不同slope域值划分
+				level_three		最大contrast域值	0x2000	一般不调整	最大contrast域值3，通过域值切换不同slope域值划分
+				level_four			1000	一般不调整	暂无
+			af_tunning_focus_analyze_light_value_t	level_one		LV域值	-11	一般不调整	AE曝光LV域值1，用于反馈当前环境亮度；用于曲线选择
+				level_two		LV域值	5	一般不调整	AE曝光LV域值2，用于反馈当前环境亮度；用于曲线选择
+				level_three		LV域值	81	一般不调整	AE曝光LV域值3，用于反馈当前环境亮度；用于曲线选择
+				level_four		LV域值	24	一般不调整	AE曝光LV域值4，用于反馈当前环境亮度；用于曲线选择
+			af_tunning_focus_analyze_slope_t	af_tuning_focus_contrast_flope_t	level_one	contrast slope域值	1.06f	一般不调整	非点光源场景对比度slope域值1，slope越大contrast变化越大
+					level_two	contrast slope域值	1.2f	一般不调整	非点光源场景对比度slope域值2，slope越大contrast变化越大
+					level_three	contrast slope域值	1.7f	一般不调整	非点光源场景对比度slope域值3，slope越大contrast变化越大
+				af_tuning_focus_light_flope_t	level_one	contrast slope域值	1.06f	一般不调整	点光源场景对比度slope域值1，slope越大contrast变化越大
+					level_two	contrast slope域值	1.25f	一般不调整	点光源场景对比度slope域值2，slope越大contrast变化越大
+					level_three	contrast slope域值	1.75f	一般不调整	点光源场景对比度slope域值3，slope越大contrast变化越大
+			af_tunning_focus_analyze_sun_scene_t	sun_scene_histratio_th		太阳场景直方图相关域值	2	因为hist_ratio比例问题，导致太阳场景高概率不进入时使用 (1,100)	"太阳场景中，高亮区域占所有trigger区像素的比例，以此来判断该场景是否为太阳场景,当数值越小，越容易进入太阳场景 
+"
+				sun_scene_hist_cal_range		太阳场景直方图相关域值	3	因为hist_ratio比例问题，导致太阳场景高概率不进入时使用 (1-32)	太阳场景中，高亮区域范围，目前总共为32hist直方图，选择范围为 （32 - sun_scene_hist_cal_range ， 31），数值越大越容易进入太阳场景
+		af_tunning_flash_param_t	expo_threshold			未使用	0x41000		未使用
+		af_tunning_face_param_t	fast_face			fast face开关	0	一般不调整	通过人脸大小去设置搜索的马达初始位置的使能开关
+			max_suggest_offset_code			大人脸偏移code	0x118	一般不调整	人脸较大时建议的偏移code，在通过人脸大小设置搜索初始位置时使用。
+			mini_suggest_offset_code			小人脸偏移code	0x70	一般不调整	人脸较小时建议的偏移code，在通过人脸大小设置搜索初始位置时使用。
+			face_expo_th			未使用	10000		未使用
+			face_yv_th			未使用	500		未使用
+		af_tunning_focus_common_t	sensor_efl			sensor等效焦距	5.58f	根据sensor datasheet设置	sensor等效焦距
+		af_tunning_point_light_param_t	strong_spot_light_slope_th			强点光源阈值之一	1.2f	[1.0,1.4]	强点光源的阈值，判断方法是计算hist最高3级的最大值与其余级数的最大值的比值，若比值大于这个阈值则认为是强点光源
+			strong_spot_threshold_three_th			强点光源阈值之一	0.14f	[0.1,0.18]	强点光源的阈值，判断方法是计算hist最高3级之和与所有级之和的比值，若比值大于这个阈值则认为是强点光源条件之一
+			point_light_num_multiple_th			点光源阈值比例	1.6f	[0.8,2.4]	点光源阈值的缩放比例（点光源数/对焦框大小）
+		af_tuning_focus_prepare_param_t	focus_laser_min_distance			激光的距离阈值	40.0f	一般不调整	激光的距离阈值，小于该阈值则认为距离太近激光被遮挡，不认为场景是近距
+			pd_multidepth_valid_thr			PD window0置信度阈值	4000	[4000,7500]	多景深场景PD window0窗的置信度阈值，大于该阈值且confidence为1则认为该窗PD可信
+			laser_macro_distance_level			激光微距阈值	350.0f	一般不调整	Prepare中激光距离阈值，小于该距离认为是微距
+			tele_macro_distance			Tele距离阈值	500	[400,600]	Tele距离阈值，小于该距离认为是微距
+			ae_wait_cnt_thr			Prepare中等待ae帧数上限	15	一般不调整	Prepare中正常情况需要等待AE的帧数上限
+			dmap_multidepth_thr			Dmap多景深阈值	150	[100,200]	Dmap多景深阈值，若Dmap给出的多景深值大于该值则认为是多景深场景
+			small_step_num			小步长限制步数阈值	8	[7,9]	步数阈值，小步长限制搜素范围时的小范围阈值
+			small_step_big_num			小步长限制步数阈值	12	[11,13]	步数阈值，小步长限制搜素范围时的大范围阈值
+	af_tunning_pd_param_t	af_tunning_pd_sony_tpye1_param_t	knotpoints_x			ok ng line x方向的节点数	2	一般不调整	sony pd转defocus时，根据置信度给出是否可信需要的okng line x方向节点数
+			knotpoints_y			ok ng line y方向的节点数	2	一般不调整	sony pd转defocus时，根据置信度给出是否可信需要的okng line y方向节点数
+			knotpoints_addr_x[AF_PD_MAX_KNOTPOINTS_X]			ok ng line在图像全像素尺寸的x方向坐标	"0,4032,0,0,
+0,0,0,0,
+0,0,0,0,
+0,0,0,0"	根据sensor输出的图像最大分辨率设置	节点像素在图像中的位置
+			knotpoints_addr_y[AF_PD_MAX_KNOTPOINTS_Y]			ok ng line在图像全像素尺寸的y方向坐标	"0,3016,0,0,
+0,0,0,0,
+0,0,0,0,
+0,0,0,0"	根据sensor输出的图像最大分辨率设置	节点像素在图像中的位置
+			knotpoints_thr_line[AF_PD_MAX_KNOTPOINTS]	af_tunning_pd_sony_defocus_thr_line_t 1	point_num	defocus threshold节点数	2	一般不调整	defocus threshold line节点数
+					analog_gain[AF_PD_MAX_THR_LINE_POINT]	对应节点sensor again	"0,0x7fffffff,0,0,
+0,0,0,0,
+0,0,0,0,
+0,0,0,0"	一般不调整，[0,0x7fffffff]	sensor 输入模拟gain范围
+					confidecne[AF_PD_MAX_THR_LINE_POINT]	sensor或者算法输出的原始pd值置信度范围	"145, 145, 0, 0,
+0,0,0,0,
+0,0,0,0,
+0,0,0,0"	一般不调整，根据sensor pd实测表现计算得出	库输出的原始置信度判断阈值,由sony输出的原始pd置信度和算法输出的pd置信度计算得出，具体怎么定值，需要实测每一个模组在各个场景各种亮度下的表现
+				af_tunning_pd_sony_defocus_thr_line_t 2	point_num	defocus threshold节点数	2	一般不调整	defocus threshold line节点数
+					analog_gain[AF_PD_MAX_THR_LINE_POINT]	对应节点sensor again	"0,0x7fffffff,0,0,
+0,0,0,0,
+0,0,0,0,
+0,0,0,0"	一般不调整	sensor 输入模拟gain范围
+					confidecne[AF_PD_MAX_THR_LINE_POINT]	sensor或者算法输出的原始pd值置信度范围	"145, 145, 0, 0,
+0,0,0,0,
+0,0,0,0,
+0,0,0,0"	一般不调整，根据sensor pd实测表现计算得出	库输出的原始置信度判断阈值
+				af_tunning_pd_sony_defocus_thr_line_t 3	point_num	defocus threshold节点数	2	一般不调整	defocus threshold line节点数
+					analog_gain[AF_PD_MAX_THR_LINE_POINT]	对应节点sensor again	"0,0x7fffffff,0,0,
+0,0,0,0,
+0,0,0,0,
+0,0,0,0"	一般不调整	sensor 输入模拟gain范围
+					confidecne[AF_PD_MAX_THR_LINE_POINT]	sensor或者算法输出的原始pd值置信度范围	"145, 145, 0, 0,
+0,0,0,0,
+0,0,0,0,
+0,0,0,0"	一般不调整，根据sensor pd实测表现计算得出	库输出的原始置信度判断阈值
+				af_tunning_pd_sony_defocus_thr_line_t 4	point_num	defocus threshold节点数	2	一般不调整	defocus threshold line节点数
+					analog_gain[AF_PD_MAX_THR_LINE_POINT]	对应节点sensor again	"0,0x7fffffff,0,0,
+0,0,0,0,
+0,0,0,0,
+0,0,0,0"	一般不调整	sensor 输入模拟gain范围
+					confidecne[AF_PD_MAX_THR_LINE_POINT]	sensor或者算法输出的原始pd值置信度范围	"145, 145, 0, 0,
+0,0,0,0,
+0,0,0,0,
+0,0,0,0"	一般不调整，根据sensor pd实测表现计算得出	库输出的原始置信度判断阈值
+		pd_small_to_normal_code_range_thr				最小pd窗与普通pd窗相减的阈值	110	计算得出，一般不调整	当最小窗的pd_code与1窗到5窗中（1-5号窗对应的是中心十字normal窗）最大pd_code相减大于该阈值时，则选择最小窗作为参考（前景优先）；
+		pd_normal_code_range_thr				普通pd窗之间相差阈值	33	计算得出，一般不调整	normal pd（1到5号）窗最大最小值差的阈值，小于该阈值时，使用pd normal窗的标志置为true
+		pd_normal_code_max_range_thr				普通pd窗（中心5个窗平均）与pd最大值（5个窗pd code最大值）之间相差阈值	116	计算得出，一般不调整	normal pd窗pd_code最大最小值差的阈值大于等于改阈值时，使用1到5窗的有效平均pd_code作为target_code；
+		pd_side				pd 理论边界值	64.0f	[32.0f,768.0f]	pd difference给出的理论最大最小值，取±pd_side；由sensor厂商给出
+		af_pd_strategy_type				af算法使用pd策略	0	[0,1]	AF_PD_ONLY_OFFSET=0, AF_PD_OFFSET_SMALL_STEP=1；
+		caf pd_convergence_enable				caf对焦pd自收敛开关	1	[0,1]	caf pd自收敛开关
+		taf pd_convergence_enable				taf pd自收敛开关	1	[0,1]	taf pd自收敛开关
+		pd_convergence_th				pd自收敛阈值	0.12f	[0.1f,3.0f]	自收敛阈值，pd值绝对值在该值范围内不再使用pd给出的suggest code推动马达,进入判断收敛结束的分支，如果满足条件，收敛结束，如果不满足，接contrast对焦
+		pd_confidence_caf_th				caf是否使用pd给出的结果修正assist_code的阈值	5.0f	[0,9999.0f]	计算CAF suggest_code时，pd给出的suggest_phase_difference小于该值，并且可信时，使用pd给出的建议值修正assist_code
+		pd_confidence_taf_th				taf是否使用pd给出的结果修正assist_code的阈值	30.0f	[0,9999.0f]	计算TAF suggest_code时，满足pd给出的suggest_phase_difference小于该值，并且可信时，使用pd给出的建议值修正assist_code（因为TAF大概率用pd（激光由于光斑跟对焦重合度关系））
+		pd_contrast_small_step_enable				pd一大步接小步做contrast对焦开关	0	[0,1]	pd推完之后，是否接contrast开关，打开则说明使用pd一大步+cd策略；type2、type3，pd不能收敛模组，步长可能大于min step;步长比179大；
+		pd_contrast_small_step				混合对焦的步长	10	[0,16]	上面185使用的步长
+		pd_contrast_init_vcm_offset				计算混合对焦搜索起始位置的offset	30	[0,32]	使用pd+小步长时，计算target_code在suggest_code上减去该值，即往回退该值。
+		pd_offset_min				手机标定pd offset 最小值	-1.0f	根据1个pd对应的code得出，一般应小于1/3个lens shift	手机从nv中获取到的offset值应该大于该值，才可以使用标定的offset值进行自收敛。
+		pd_offset_max				手机标定pd offset 最大值	1.0f	根据1个pd对应的code得出，一般应小于1/3个lens shift	手机从nv中获取到的offset值应该小于该值，才可以使用标定的offset值进行自收敛。
+		config_fixed_mode_enable				是否配置fixed pd 模式	1	[0,1]	是否配置pd fixed模式，目前使用的是flexible模式，打开则表示可以使用fixed模式
+		pd_sensor_type				sensor pd 类型	1	[0,6]	sensor pd 类型，表示如下AF_PD_SENSOR_UNKNOWN = 0，AF_PD_SENSOR_SONY_TYPE1 = 1,AF_PD_SENSOR_SONY_TYPE3 = 2,AF_PD_SENSOR_OV_TYPE2 = 3,AF_PD_SENSOR_OV_TYPE3 = 4,AF_PD_SENSOR_OV_TYPE_2IN1 = 5,AF_PD_SENSOR_AP = 6
+		pd_sensor_name				sensor名字枚举	4	[0,15]	"SENSOR_UNKNOWN = 0,
+IMX298 = 1,
+IMX286 = 2,
+IMX386 = 3,
+IMX380 = 4,
+IMX600 = 5,
+IMX319 = 6,
+OV12870 = 7,
+OV12A10 = 8,
+IMX486 = 9,
+OV16B10 = 10,
+OV08A10 = 11,
+IMX498 = 12,
+IMX350 = 13,
+IMX351 = 14,
+IMX586 = 15
+"
+		pd_cd_paral_enable				pd cd 并行开关	1	[0,1]	pd cd并行开关
+		pd_cd_paral_expo_time_th				pd cd 并行时sensor的曝光时间阈值	10000	（0，？]	pd cd并行是需要判断曝光行，大于该值，使用pd cd 并行
+		pd_calib_offset_flag				产线是否对该手机该模组做了pd　offset标定	1	[0,1]	该产线是否做了pd offset 九宫格标定
+		caf_pd_conf_param	very_strong_point_light_th[AF_PD_FLEXIBLE_MODE_MAX_WINDOWS]			caf不同窗判断较强点光源pd阈值	{50000,  50000,  50000,  50000,  50000,  50000,  50000,  65000}	[0,65535]	判断各个场景下pd 8个窗的置信度阈值，大于该值则表示该窗pd可信，供后续使用；点光源场景pd表现不好，所以阈值应该尽量大些。
+			strong_point_light_th[AF_PD_FLEXIBLE_MODE_MAX_WINDOWS]			caf不同窗判断强点光源pd阈值	{30000,  30000,  30000,  30000,  30000,  30000,  30000,  30000}	[0,65535]	判断各个场景下pd 8个窗的置信度阈值，大于该值则表示该窗pd可信，供后续使用
+			night_low_ev_th[AF_PD_FLEXIBLE_MODE_MAX_WINDOWS]			caf不同窗判断夜景低亮度pd阈值	{20000,  25000,  25000,  25000,  25000,  25000,  35000,  50000}	[0,65535]	判断各个场景下pd 8个窗的置信度阈值，大于该值则表示该窗pd可信，供后续使用
+			night_high_ev_th[AF_PD_FLEXIBLE_MODE_MAX_WINDOWS]			caf不同窗判断夜景高亮pd阈值	{40000,  50000,  50000,  50000,  50000,  50000,  65000,  65000}	[0,65535]	判断各个场景下pd 8个窗的置信度阈值，大于该值则表示该窗pd可信，供后续使用
+			macro_th[AF_PD_FLEXIBLE_MODE_MAX_WINDOWS]			caf微距场景pd阈值	{7500,  10000,  10000,  10000,  10000,  10000,  20000,  20000}	[0,65535]	判断各个场景下pd 8个窗的置信度阈值，大于该值则表示该窗pd可信，供后续使用
+			normal_th[AF_PD_FLEXIBLE_MODE_MAX_WINDOWS]			caf普通场景pd阈值	{7500,  20000,  20000,  20000,  20000,  20000,  25000,  25000}	[0,65535]	判断各个场景下pd 8个窗的置信度阈值，大于该值则表示该窗pd可信，供后续使用
+		taf_pd_conf_param	very_strong_point_light_th[AF_PD_FLEXIBLE_MODE_MAX_WINDOWS]			taf不同窗判断较强点光源pd阈值	{50000,  50000,  50000,  50000,  50000,  50000,  50000,  65000}	[0,65535]	判断各个场景下pd 8个窗的置信度阈值，大于该值则表示该窗pd可信，供后续使用
+			strong_point_light_th[AF_PD_FLEXIBLE_MODE_MAX_WINDOWS]			taf不同窗判断强点光源pd阈值	{30000,  30000,  30000,  30000,  30000,  30000,  30000,  30000}	[0,65535]	判断各个场景下pd 8个窗的置信度阈值，大于该值则表示该窗pd可信，供后续使用
+			night_low_ev_th[AF_PD_FLEXIBLE_MODE_MAX_WINDOWS]			taf不同窗判断夜景低亮度pd阈值	{20000,  20000,  20000,  25000,  25000,  25000,  25000,  35000}	[0,65535]	判断各个场景下pd 8个窗的置信度阈值，大于该值则表示该窗pd可信，供后续使用
+			night_high_ev_th[AF_PD_FLEXIBLE_MODE_MAX_WINDOWS]			taf不同窗判断夜景高亮pd阈值	{40000,  40000,  40000,  50000,  50000,  50000,  50000,  65000}	[0,65535]	判断各个场景下pd 8个窗的置信度阈值，大于该值则表示该窗pd可信，供后续使用
+			macro_th[AF_PD_FLEXIBLE_MODE_MAX_WINDOWS]			taf微距场景pd阈值	{7500,  10000,  10000,  10000,  10000,  10000,  20000,  30000}	[0,65535]	判断各个场景下pd 8个窗的置信度阈值，大于该值则表示该窗pd可信，供后续使用
+			normal_th[AF_PD_FLEXIBLE_MODE_MAX_WINDOWS]			taf普通场景pd阈值	{7500,  10000,  10000,  10000,  10000,  10000,  20000,  30000}	[0,65535]	判断各个场景下pd 8个窗的置信度阈值，大于该值则表示该窗pd可信，供后续使用
+		zoom_pd_conf_param	very_strong_point_light_th[AF_PD_FLEXIBLE_MODE_MAX_WINDOWS]			zoom不同窗判断较强点光源pd阈值	{16666,  25000,  25000,  25000,  25000,  25000,  25000,  32500}	[0,65535]	判断各个场景下pd 8个窗的置信度阈值，大于该值则表示该窗pd可信，供后续使用
+			strong_point_light_th[AF_PD_FLEXIBLE_MODE_MAX_WINDOWS]			zoom不同窗判断强点光源pd阈值	{16666,  25000,  25000,  25000,  25000,  25000,  25000,  32500}	[0,65535]	判断各个场景下pd 8个窗的置信度阈值，大于该值则表示该窗pd可信，供后续使用
+			night_low_ev_th[AF_PD_FLEXIBLE_MODE_MAX_WINDOWS]			zoom不同窗判断夜景低亮度pd阈值	{10000,  10000,  10000,  12500,  12500,  12500,  12500,  17500}	[0,65535]	判断各个场景下pd 8个窗的置信度阈值，大于该值则表示该窗pd可信，供后续使用
+			night_high_ev_th[AF_PD_FLEXIBLE_MODE_MAX_WINDOWS]			zoom不同窗判断夜景高亮pd阈值	{30000,  30000,  30000,  37500,  37500,  37500,  37500,  30000}	[0,65535]	判断各个场景下pd 8个窗的置信度阈值，大于该值则表示该窗pd可信，供后续使用
+			macro_th[AF_PD_FLEXIBLE_MODE_MAX_WINDOWS]			zoom微距场景pd阈值	{5000,   6666,   6666,   6666,   6666,   6666,  10000,  15000}	[0,65535]	判断各个场景下pd 8个窗的置信度阈值，大于该值则表示该窗pd可信，供后续使用
+			normal_th[AF_PD_FLEXIBLE_MODE_MAX_WINDOWS]			zoom普通场景pd阈值	{5000,   6666,   6666,   6666,   6666,   6666,  10000,  15000}	[0,65535]	判断各个场景下pd 8个窗的置信度阈值，大于该值则表示该窗pd可信，供后续使用
+		video_pd_conf_th_[AF_PD_FLEXIBLE_MODE_MAX_WINDOWS]				video下不同窗使用pd阈值	{15000,  20000,  20000,  20000,  20000,  20000,  25000,  30000}	[0,65535]	判断各个场景下pd 8个窗的置信度阈值，大于该值则表示该窗pd可信，供后续使用
+		one_pd_equal_vcm_code				一个pd相当于多少vcm code	24	计算得出，需要根据模组的vcm形成和pd范围计算得出，vcm_range/pd	不同sensor 马达行程不一样，该值表示一个pd值对应的马达范围，根据模组厂的标定，该值一般随模组变化
+		photo_open_pd_trigger_flag				普通预览打开pd触发开关	1	[0,1]	是否打开普通预览pd trigger
+		video_open_pd_trigger_flag				录像中打开pd触发	1	[0,1]	是否打开录像中pd trigger
+		video_pd_convergence_th				录像中pd收敛defocus范围	16	[8,24]	录像中pd自收敛的defocus范围，pd给出的defocus在该范围内，则收敛，pd给出的code值，马达行程大的模组该值较大，马达形成小的模组该值小
+	af_tunning_laser_param_t	laser_ability_distance				激光远距状态的距离	2000.0f	[2000.0f,5000.0f]	激光状态在255时，将激光给出的距离置为该值，认为是无穷远的值
+	af_tuning_taf_zero_focus_param_t	center_point_x_tiny_delta_th				taf框中心位置变化tiny阈值 X方向	10	一般不调整	上一次TAF与当前TAF X方向中心位置变化的阈值，如果满足该阈值，则认为TAF 对焦位置变化非常小。
+		center_point_y_tiny_delta_th				taf框中心位置变化tiny阈值 Y方向	10	一般不调整	上一次TAF与当前TAF Y方向中心位置变化的阈值，如果满足该阈值，则认为TAF 对焦位置变化非常小。
+		center_point_x_small_delta_th				taf框中心位置变化small阈值 X方向	80	一般不调整	上一次TAF与当前TAF Y方向中心位置变化的阈值，如果满足该阈值，则认为TAF 对焦位置变化较小。
+		center_point_y_small_delta_th				taf框中心位置变化small阈值 Y方向	80	一般不调整	上一次TAF与当前TAF Y方向中心位置变化的阈值，如果满足该阈值，则认为TAF 对焦位置变化较小。
+		color_code_delta_th				主camera上一个马达位置与当前马达位置相差阈值	4	一般不调整	TAF 0s对焦判断主路camera马达是否变化，小于该阈值则认为马达没有较大推动，预览画面没有明显缩放
+		mono_code_delta_th				副camera上一个马达位置与当前马达位置相差阈值	6	一般不调整	TAF 0s对焦判断副路camera马达是否变化，小于该阈值则认为马达没有较大推动，预览画面没有明显缩放
+		phone_position_delta_th				判断0s对焦过程中手机是否移动	80	一般不调整	判断手机是否移动阈值，x y z方向手机上一次位置与本次位置小于该阈值则认为手机没有移动
+		gyro_sum_th				陀螺仪检测手机是否移动阈值	2.0f	一般不调整	检测当前光纤陀螺仪各个方向移动总和阈值
+		gyro_std_th				陀螺仪偏转角度判断手机是否移动阈值	1.0f	一般不调整	检测当前光纤陀螺仪偏转角阈值
+		pd_mean_th				不同窗pd平均值	0.3f	一般不调整	taf 各个窗有效pd值平均值阈值
+		pd_std_th				不同窗pd标准差	1.0f	一般不调整	taf 各个窗有效pd值的标准差，表示pd波动范围的可接受程度
+		defocus_mean_th				不同窗defocus平均值	5.0f	一般不调整	taf 各个窗有效defocus值平均值阈值
+		defocus_std_th				不同窗defoucs标准差	5.0f	一般不调整	taf 各个窗有效defocus值的标准差，表示defocus波动范围的可接受程度
+	af_tunning_dxo_param_t	dxo_enable				DXO开关	1	一般不调整，[0,1]	从atlanta平台开始DXO与普通预览对焦没有区别，该标志均置为1
+		ae_luma_stable_th				自动曝光的luma值稳定阈值	6	一般不调整	DXO下，trigger的当前帧需要等到AE稳定，若当前ae_luma小于该阈值，则可以触发，否则需要等AE稳定。
+		trigger_wait_ae_frame_th				自动曝光的稳定帧数阈值	5	一般不调整	DXO下，trigger的当前帧需要等到AE稳定，若等待一定帧数后，ae_luma仍然无法满足要求，则触发。
+	af_tunning_tracking_param_t	tracking_luma_th				tracking的亮度阈值之一	40	[20,100]	进入Tracking场景的照度阈值；高于该阈值，进入tracking；
+		tracking_face_tripod_luma_th				tracking的亮度阈值之一	65	[20,100]	三脚架人脸场景进入tracking的照度阈值。KPI人脸场景进入tracking的阈值提高了。高于该阈值进入tracking
+		tracking_target_min_size				目标最小尺寸	90	[0,360]	Tracking目标的最小尺寸，小于该尺寸不进行trackingaf
+		tracking_target_legal_area_ratio				tracking区域限制	0.4f	[0,0.5]	Tracking物体位于预览的合法位置，如果超出这个位置就不进行trackingaf；0.4表示80%区域做追焦
+		tracking_rect_scale_ratio				tracking窗口缩小比例	0.8f	[0.5,1]	Tracking窗口缩放比例，占原始框的百分之多少
+		tracking_rect_max_size				tracking窗口最大尺寸	360	[72,480]	Tracking窗口的最大尺寸，大于该尺寸需要进行截取
+		tracking_rect_flower_max_size				花场景tracking窗口最大尺寸	216	[72,480]	Tracking窗口flower场景的最大尺寸，大于该尺寸需要进行截取
+		tracking_flower_zone_rect_size				花场景zone rect大小	72	[45,180]	Tracking flower场景的zone窗口大小
+		tracking_target_appear_cnt_th				进入trackingaf帧数阈值	3	一般不调整，[1,10]	进入trackingaf的帧阈值，目标连续出现多少帧才进入到tracking状态
+		tracking_md_target_pd_change_th				MD PD变化阈值	64	一般不调整，[0,128]	统计MD给出框内PD值跟当前马达差值大于该阈值才认为是真正存在运动目标
+		tracking_target_moving_ratio				目标运动的阈值	0.1f	[0,1]	判断目标处于运动的宽高等变化的比例阈值
+		tracking_target_stable_ratio				目标稳定的阈值	0.05f	[0,1]	判断目标处于稳定状态的宽高等变化的比例阈值
+		tracking_target_disappear_cnt_th				退出tracking的帧数阈值	3	一般不调整，[1,10]	处于tracking状态后，目标连续消失多少帧才退出trackingaf
+		tracking_unstable_cnt_th				稳定到不稳定的帧数阈值	2	一般不调整，[1,10]	目标状态从稳定跳转为运动的非稳定帧数阈值
+		tracking_target_pd_judge_changing_valid_th				能否用PD判断运动条件	64	一般不调整，[0.128]	如果pd减去当前马达位置差值大于该阈值，认为不可用pd判断运动，否则可以。
+		tracking_target_pd_disappear_th				PD变化的阈值	64	一般不调整，[0.128]	稳定状态时，当PD变化超过这个阈值，则认为目标当前帧存在变化或消失
+		tracking_target_pd_change_cnt_th				PD认为目标运动的帧数阈值	3	一般不调整，[1,10]	稳定状态时，当PD连续变化/消失的帧数达到该阈值，则认为目标运动，切换到目标运动状态
+		tracking_md_unreliable_gyro_th				MD不可用的gyro阈值	0.95f	[0,2]	MD信息不可用的gyro阈值，当gyro大于该阈值AF不响应MD ROI
+af_tunning_video_param_t	af_tunning_video_movingaf_param_t	not_push_min_th				马达不再推动阈值	2	一般不调整[0,10]	该阈值为video movingaf下，辅助信息计算出的目标位置与当前马达位置间差值阈值，当差值大于该值时将会继续判断是否推动马达，若小于该阈值则本帧不推动马达，阈值越大马达越少推动，体验越好，但是清晰度越差
+		code_wave_th				辅助信息波动阈值	8	一般不调整[0, 24]	该阈值标示辅助信息间、辅助信息与马达位置间差值的度量阈值。一方面，若激光与PD给出的准焦位置差值在该阈值内，则认为辅助信息一致性好，可以使用；一方面标示当前马达位置与辅助信息给出的准焦位置间差距的度量，若两者差值在该阈值内，则认为在movingaf中的后续推马达未幅度很小，马达状态可认为稳定。该值越大体验越好，但场景变化后的触发反应及清晰度越差。
+	af_tunning_video_stableaf_param_t	assist_convergence_refine_th				稳定对焦中，辅助信息收敛手判断是否需要进一步清晰画面阈值	12	[0, 48]	在稳定对焦中，若通过辅助信息收敛(当PD与激光给出的准焦位置差距在一个step内时)，通过判断PD与激光给出的准焦位置是否小于该阈值判断是否走小步长、限制范围CDAF进一步优化准焦位置。
+	af_tunning_video_general_param_t	window_distance_th				玻璃场景激光距离	100.0f	推荐范围[50.0f, 150.0f]	该阈值为一般隔着玻璃拍摄外景时，玻璃到手机的距离。该值越大，在玻璃场景下表现越好，但是真实该范围内遮挡体验越差
+		laser_far_convergence_th				激光可自收敛最小距离	1000.0f	一般不调整[900.0f, 2000.0f]	该阈值标示，当前对焦距离。若超过该阈值，由于景深较大，因此推至该位置时画面基本不会出现大糊。该阈值可根据不同模组景深表进行计算，一般设置为1000.0f能满足大部分模组，不建议调整
+		laser_far_infinite_th				可认为当前对焦目标在无穷远处的最小激光距离	1200.0f	[laser_far_convergence_th, 2000.0f]	该值表示，若激光给出的距离比该值还远时，对焦主体在无穷远处，可提升激光在辅助信息间选择的权重，辅助信息使用时更依赖于激光
+		assist_code_gap_th				辅助信息间给出的准焦位置偏差阈值	24	[0, inf]	该值表示，激光与PD给出的准焦位置间差值的阈值，若两者差值大于该阈值，则认为辅助信息一致性较差，无法依靠辅助信息直接完成对焦，需要进行CDAF。若辅助信息间给出的准焦位置差值小于该阈值，则认为辅助信息间一致性好，可直接利用辅助信息进行收敛。该值越大，则对焦过程越快，对焦体验越好，但是清晰度越差
+af_fixed_param_t	af_global_fixed_switch_param_t	dcamera_enable				双camera开关	1	[0,1]	"后置主和后副可以同时对焦时，主副都需要置为1；
+后主AF，后副FF，则需要给主路置为false，副路也置为false；
+前置FF,或者前置副路FF，都置为false；
+前置主路AF，副路FF，主路置为true，副路置为false；"
+		dmap_enable				dmap 开关	0	[0,1]	atlanta 没有damp,所有sensor该开关均置为0
+		laser_enable				激光开关	1	[0,1]	有可用激光数据，则可以打开，主副路保持开光状态一致。
+		pdaf_enable				pd开关	1	[0,1]	当前sensor是否支持pdaf，支持则打开。
+		get_pd_offset_flag				获取pd offset开关	1	[0,1]	是否获取pd产线标定的offset值用来补偿pd给出的suggest pd值，使pd更加准确。
+		ap_enable				ap侧计算contrast开关	1	[0,1]	"ap侧是否计算contrast开关，辅助对焦，可以给出search位置的contrast值，供曲线选择分析使用
+"
+		close_loop_enable				闭环马达开关	1	[0,1]	是否为闭环马达，是则使能；
+		gyro_enable				陀螺仪开关	1	[0,1]	是否有陀螺仪，有则是能；
+		single_frame_optimise				单帧优化开关	0	一般不调整，[0,1]	是否打开单帧优化；
+		every_frame_enable				单帧优化开关	0	一般不调整，[0,1]	单帧优化算法开关，相比于前一种单帧优化不用外扩和等待一帧
+		aeaf_enable				ae af并行开关	1	[0,1]	是否打开aeaf并行；
+		platform_name:0-austin; 1:dallas; 2-chicago; 3-chicago-v2; 4-boston;				平台枚举	3	一般不调整，[0,4]	属于哪个平台；现在已经不用了；
+		direct_capture_enable				直接拍照开关	0	[0,1]	在闪光灯模式没有置为on的情况下，拍照对焦是不是直接拍下去的开关，0表示FCAF对焦完成拍照，1表示不再等对焦完成，FCAF直接上报对焦成功，拍照
+		fast_capture_enable				快拍开关	0	[0,1]	是否支持对焦快拍
+		taf_zero_focus_enable				taf 0s对焦开关	1	[0,1]	taf 0s对焦开关
+		tracking_mode_enable				tracking对焦开关	1	[0,1]	目标跟踪模式是能开关
+		fast_snap_control				快拍流程控制枚举	1	[0,3]	"/* old fast snap. */
+AF_INT_FAST_SNAP_DEFAULT = 0,
+/* new fast snap/speed first(1 frame). */
+AF_INT_FAST_SNAP_SPEED_FIRST,
+/* new fast snap/effect first(<=3 frame). */
+AF_INT_FAST_SNAP_EFFECT_FIRST,
+AF_INT_FAST_SNAP_MAX,"
+		supre_macro_enable				超微距镜头使能	0	[0,1]	该产品该sensor是否是超微距镜头
+		multi_depth_new_method_enable				使用fixed pd判断多景深开关	1	[0,1]	用pd fixed窗口来判断多景深的标志
+	af_global_fixed_hardware_param_t	af_global_fixed_hardware_sensor_param_t	camera_id			camera id	0	[0,3]	camera_id，一般情况下：后主:0；前主：1；后副：2；后tele:3；
+		af_global_fixed_hardware_lens_param_t	f_number			F数	1.8f	器件参数，不可调，不同模组都不相同	对应模组镜头的F数；需要pq根据期间参数修改
+			coc			弥散圆直径	1.0f	器件参数，不可调，不同模组都不相同	对应模组镜头的弥散圆直径；需要pq根据期间参数修改
+			efl			等效焦距	5.58f	器件参数，不可调，不同模组都不相同	对应模组镜头的等效焦距；需要pq根据期间参数修改
+			calib_dist_num			标定AF焦段位置数	4	[3,5]	标定镜头模组不同距离的code个数；随产品变化
+			calib_dist[AF_CALIB_DIST_MAX_NUM]			标定AF焦段位置	{90, 150, 350, 5000}	[20,5000]	分别标定对应镜头模组的物距位置；单位mm
+			one_code_equal_lensshift			1个code对应的lens shift	1.77f	根据景深表计算得到	一个code等于的lens shift参数
+			fov_diag			模组视场角	76	器件参数，不可调，不同模组都不相同	主camera（camera_id==0）的视场角，需要pq根据期间参数修改
+		af_global_fixed_hardware_motor_param_t	respone_time, in unit of ms			马达响应时间	7	产品定制化参数	马达相应时间，单位ms；
+			delay_time			马达延迟时间	14	产品定制化参数	分步推时，每一步延迟时间，单位ms；
+			settle_time			马达稳定时间	10000	产品定制化参数	单位us，一般由器件决定
+		af_global_fixed_hardware_laser_param_t	pricam2laser_x_dist			主camera到激光发射器之间x方向距离	7.0f	产品定制化参数	主camera(camera_id==0)与激光发射器之间的x方向的距离，单位mm
+			pricam2laser_y_dist			主camera到激光发射器之间y方向距离	8.96f	产品定制化参数	主camera(camera_id==0)与激光发射器之间的y方向的距离，单位mm
+			pricam2laser_z_dist			主camera到激光发射器之间z方向距离	0.38f	产品定制化参数	主camera(camera_id==0)与激光发射器之间的z方向的距离，单位mm
+			laser_sent2rece_x_dist			激光发射器到接收器之间x方向距离	3.0f	产品定制化参数	激光发射器与接收器之间的x方向的距离，单位mm
+			laser_sent2rece_y_dist			激光发射器到接收器之间y方向距离	0.0f	产品定制化参数	激光发射器与接收器之间的y方向的距离，单位mm
+			pricam_x_fov			主camera X方向视场角	65.885f	产品定制化参数	主camera(camera_id==0)x方向的fov视场角
+			pricam_y_fov			主camera Y方向视场角	51.808f	产品定制化参数	主camera(camera_id==0)y方向的fov视场角
+			laser_fov			激光fov大小	25.0f	产品定制化参数	激光发射器的视场角
+			pricam2seccam_dist			主副camera之间距离	10.95f	产品定制化参数	主camera与副camera之间的距离，单位mm
+		af_global_fixed_hardware_self_learn_param_t	af_temp_drift_coff			马达的温飘系数	0.8f	手机测试得到	实际测试而来，温度上升一度对应code变化量
+			self_learn_dist_num			自学习表格中距离个数	5	产品定制化参数	固定为5，跟表格个数强相关
+			self_learn_calib_dist[AF_SELF_LEARN_CALIB_DIST_MAX_NUM]			自学习表格中保存的距离的具体值	{5000,1000,350,150,90}	产品定制化参数	不同的sensor不同。一般的color{5000,1000,350,150,90}，wide {5000,350,150,90,25}，tele {5000,1000,700，,500,400}
+			afc_up_distance1			afc标定向上方向距离1，固定值	300	产品定制化参数	跟AFC产线标定强相关，产线不改，不建议修改
+			afc_up_distance2			afc标定向上方向距离2，固定值	500	产品定制化参数	
+			afc_down_distance1			afc标定向下方向距离1，固定值	300	产品定制化参数	
+			afc_down_distance2			afc标定向下方向距离2，固定值	1000	产品定制化参数	
+			afc_hor_distance1			afc标定水平方向距离1，固定值	300	产品定制化参数	
+			afc_hor_distance2			afc标定水平方向距离2，固定值	500	产品定制化参数	
+			sfr_distance_num			sfr标定的距离个数，一般为两个	2	产品定制化参数	跟SFR产线标定强相关，产线不改，不建议修改
+			sfr_distance[AF_SFR_DISTANCE_NUM]			sfr标定的距离数组	{5000,90}	产品定制化参数	
+	af_global_fixed_trigger_param_t	reserved				保留	0		控制trigger的速度和灵敏度，预留
+	af_global_fixed_focus_param_t	af_global_fixed_focus_cdaf_param_t	offset_init			手机初始化otp无穷远初始位置	0xbe	一般不调整	AF对焦需要的缺省马达位置，该值无穷远位置处修正后的值。
+			full_range			手机初始化otp微距初始位置	0x3c0	一般不调整	AF对焦需要的缺省马达位置，该值微距位置处修正后的值。
+			assist_contrast_small_step_enable			辅助信息后接小步长功能开关	1	0/1	"正常场景下辅助信息加小步长的标志开关；
+1表示辅助信息后接小步长；
+0表示辅助信息后接大步长"
+			assist_contrast_small_step_flat_scene_enable			平坦区场景，辅助信息后接小步长功能开关	0	0/1	"平坦区场景下辅助信息加小步长的标志开关；
+1表示辅助信息后接小步长；
+0表示辅助信息后接大步长"
+			assist_contrast_small_step_pointlight_scene_enable			点光源场景，辅助信息后接小步长功能开关	0	0/1	"点光源场景下辅助信息加小步长的标志开关；
+1表示辅助信息后接小步长；
+0表示辅助信息后接大步长"
+			defalut_setting_normal_step_flag			设置大步长的功能开关	0	0/1	"设置大步长的功能开关；
+0表示默认设置步长关闭；
+1表示开启默认方式设置步长，步长根据模组物理特性来计算。"
+			defalut_setting_video_step_flag			设置video步长的功能开关	0	0/1	"设置video步长的功能开关；
+0表示默认设置步长关闭；
+1表示开启默认方式设置步长，步长根据模组物理特性来计算。"
+			defalut_setting_face_step_flag			设置人脸大步长的功能开关	0	0/1	"设置人脸大步长的开关；
+0表示默认设置步长关闭；
+1表示开启默认方式设置步长，步长根据模组物理特性来计算。"
+			defalut_setting_face_fine_step_flag			设置人脸小步长的功能开关	0	0/1	"设置人脸小步长的功能开关；
+0表示默认设置步长关闭；
+1表示开启默认方式设置步长，步长根据模组物理特性来计算。"
+			defalut_setting_min_step_flag			设置大步长的功能开关	0	0/1	"设置小步长的功能开关；
+0表示默认设置步长关闭；
+1表示开启默认方式设置步长，步长根据模组物理特性来计算。"
+			normal_step			对焦搜索的大步长	32	"[16, 64]
+一般为4的倍数"	normal对焦的搜索步长；若defalut_setting_normal_step_flag为1，则此处设置无效
+			video_step			video对焦搜索的步长	0x20	"[16, 64]
+一般为4的倍数，参考normal_step"	录像对焦搜索步长，若defalut_setting_video_step_flag为1，则此处设置无效
+			face_step			人脸对焦搜索的大步长	32	"[16, 64]
+一般为4的倍数,可参考normal_step"	大步长搜索时使用的步长；若defalut_setting_face_step_flag为1，则此处设置无效
+			face_fine_step			人脸对焦搜索的小步长	16	"[4, 32]
+一般为4的倍数,常用normal_step/2或者normal_step/4"	人脸小步长搜索使用的步长；若defalut_setting_face_fine_step_flag为1，则此处设置无效
+			min_step			对焦搜索的小步长	8	"[4, 32]
+一般为4的倍数,常用normal_step/4"	PD推完马达后，计算cdaf搜索的起始搜索位置使用；若defalut_setting_min_step_flag为1，则此处设置无效
+af_mmi_param_t	mmi7cm_search_range					7cm测试搜索外扩范围	80	产线负责，[0, 96]	"产线7cm对焦搜索范围； 
+start_code = otp_macro - mmi_7cm_search_range;
+end_code   = otp_macro + mmi_7cm_search_range;
+"
+	mmi_pd_offset_vcm_step					pd offset工位对焦步长	24	产线负责，[4, 32]	产线pd offset标定工位中contrast对焦步长；
+	mmi_pd_offset_start_ratio					pd offset起始搜索比例	0.33	产线负责，[0, 0.5)	产线pd offset标定工位中contrast对焦起始搜索位置在总行程的百分比，为了缩短搜索范围，节省时间；
+	mmi_pd_center_offset_vcm_step					中心位置pd offset标定搜索步长	12	产线负责，[4, 32]	产线四合一工位中pdaf测试项中contrast对焦搜索步长；
+	mmi_pd_center_offset_start_ratio					中心位置pd offset起始搜索比例	0.15	产线负责，[0, 0.5)	产线四合一工位中pdaf测试项中contrast对焦起始搜索位置在总行程的百分比，为了缩短搜索范围，节省时间；
+	mmi_vcm_step					mmi测试对焦步长	24	产线负责，[4, 32]	产线测试对焦步长

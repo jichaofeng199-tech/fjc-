@@ -1,0 +1,276 @@
+	对应代码中的变量	是否生效	含义	具体作用	调试范围
+{					
+    /* tunning_param_version */	unsigned int tunningParamVersion;	生效	效果参数版本	"与维测相关
+更改后可能会出现维测异常"	"建议不做更改
+AF框架更新时才会更改"
+    1001,					
+    /* af_tunning_vcm_attr_t */	AfTunningVcmAttr       afVcmAttr;				
+    {					
+        /* gesture_code_offset */		生效	"进AF函数和出AF函数统一转为16bit，目的是为了兼容13bit马达；
+进AF：ai_af_set_calib；会乘上64
+出AF:会除以64
+AiAfUpdateMdCodeBitLen；AfDevSetVcmCode"	"姿势差，如果标定数据有则使用标定数据，如果标定数据没有，则使用此数据。
+直接在Up和down上下姿势差加上此值"	大小约束[0，100]代码有clip 
+        0x40,					
+        /* extend_code_inf */		生效		"外扩Xxcode(默认减去该值)
+外扩后infinity下限24(10bit) 如果小于24则代码自动clip"	大小约束[0，100]代码有clip 
+        0x60,					
+        /* extend_code_macro */		生效		"外扩后macro上限1000(10bit)，如果大于1000则代码自动clip
+外扩Xxcode(默认加上该值)"	"
+大小约束[0，100]代码有clip 
+
+"
+        0					
+    },					
+    /* af_tunning_param_trigger_t */	AfTunningParamTrigger  afTunningTrigger;				
+    {					
+        /* af_tunning_param_trigger_motion_t */					
+        {					
+            /* slow_motion_th */		生效	"gyroSum=(gyro.x+gyro.y+gyro.Z)
+如果缓慢运动和快速运动都达不到则判断为GYRO_STABLE"	此数值跟GyroSum做比较来判断是否是缓慢运动GYRO_MOVING_SLOW	根据gyro以及是否需要判断触发调整
+            3.0f,					
+            /* fast_motion_th */				此数值跟GyroSum做比较来判断是否是快速运动GYRO_MOVING_FAST	根据gyro以及是否需要判断触发调整
+            6.0f,					
+            /* change_angle_th */		生效	"手机角度变化，对应changeAngleFlag、changeBigAngleFlag
+"	跟ACC的X.Y.Z三个轴的绝对值进行比较，如果ACC的数据大于此阈值，则设置changeAngleFlag为true	根据gyro以及是否需要判断触发调整
+            5.0f,					
+            /* camera_stable_th */		生效	用于判断是否是：三脚架模式	此数值跟gyroSum进行比较，如果GyroSum稳定小于此阈值则判断为三脚架模式	根据gyro以及是否需要判断触发调整
+            0.1f,					
+            /* gyro_sensitivity */		生效	"设置Gyro敏感度，分为3挡
+motionStabmeCntTh，Gyro稳定计数大于此值状态AF_GYRO_STABLE
+gyroContinueStableTh，GyroSum小于此值表示手持模式inHandFlag为true"	"0、1一样：motionStabmeCntTh为10，gyroContinueStableTh为1.0
+2：motionStabmeCntTh为3，gyroContinueStableTh为0.05"	[0,1,2]三档可选越大灵敏度越高状态切换更频繁
+            2,					
+            /* gsensor_sensitivity */		生效	"设置gsensor敏感度，分为3挡
+diffMax大于20 gsensor不稳定计数加1
+gsenUnstableCnt，gsensor不稳定计数大于此值表示GSENSOR_UNSTABLE
+gsenContinueStableTh，gsensor的diffMax(均值和当前值最大误差获得)小于此值表示手持模式onTripodFlag为true
+diffMax小于10，inHandFlag为true"	0、1、2一样：gsenUnstableCntTh为2，gsenContinueStableTh为8	[0,1,2]三档可选越大灵敏度越高状态切换更频繁
+            2					
+        },					
+        /* af_tunning_param_trigger_scene_t */					
+        {					
+            /* compared_frame_th */			对焦触发时一些统计数据的比较帧数	"compareEndFrame = PQ数值+5(基础比较帧数)
+compareEndFrameLow =  PQ数值+5(基础比较帧数)"	大于0，越大触发越不灵敏，越小越灵敏？
+            2,					
+            /* contrast_sensitivity */			"不清楚含义
+设置meanToCompXcoefTh，currToCurrContrastStableTh
+"	"2:meanToCompXcoefTh=900 currToCurrContrastStableTh=5
+0.1:meanToCompXcoefTh=800 currToCurrContrastStableTh=4"	[0,1,2]三档可选越大灵敏度越高
+            2,					
+            /* expo_sensitivity */			"不清楚含义，AE不稳定帧数？
+设置aeUnstableExtraFrames
+"	"2：aeUnstableExtraFrames=10
+0.1：aeUnstableExtraFrames=15"	[0,1,2]三档可选 越大灵敏度越高
+            2					
+        },					
+        /* af_tunning_param_trigger_face_t */					
+        {					
+            /* body_assist */			是否开启人脸框下拉功能	faceParam->needPullDownRect= pqFace->bodyAssist	[0，1]开关
+            1,					
+            /* face_window_edge_threshold */			"人脸是否在边缘超出画面，，达到阈值会有如下打印
+AfWarnLog(""face is out of edge"");"	百分比数值	(0,1)，越大越容易判断人脸在边缘
+            0.8f,					
+            /* face_window_size_threshold */			"是否小人脸，达到阈值会有如下打印
+AfWarnLog(""face size is too small"");"	百分比数值	(0,1)，越大越容易判断小人脸
+            0.06f,					
+            /* face_stable_sentivity */			"不清楚含义：
+faceDeltaLenth
+commonScaleRatio
+searchingType
+faceChangingRatio
+faceStableRatio
+faceAppearCnt
+faceStableCnt
+faceUnstableCnt"	"2：faceDeltaLenth = (40*3072)/1080
+commonScaleRatio = 0.8
+searchingType = 0
+faceChangingRatio = 0.2
+faceStableRatio = 0.1
+faceAppearCnt = 3
+faceStableCnt = 3 
+faceUnstableCnt = 4
+0,1:faceDeltaLenth = (50*3072)/1080
+commonScaleRatio = 0.75
+searchingType = 2
+faceChangingRatio = 0.2
+faceStableRatio = 0.1
+faceAppearCnt = 3
+faceStableCnt = 3 
+faceUnstableCnt = 4"	[0,1,2]三档可选越大灵敏度越高
+            2,					
+            /* video_face_enable */			视频人脸对焦功能	开关	[0，1]开关
+            1					
+        },					
+        /* af_tunning_param_trigger_laser_t */					
+        {					
+            /* distance_infinite_th */			判断是否是infinity的距离	大于此值表示infinity	单位mm，小于0则直接默认1500
+            1500,					
+            /* laser_sensitivity */			"不清楚含义：
+compareStartFrame
+compareEndFrame
+distanceChangeFrameTh
+distanceTriggerFrameTh
+normalDistanceStableTh
+macroDistanceStableTh"	"compareStartFrame = 1
+compareEndFrame = 3
+distanceChangeFrameTh = 3
+distanceTriggerFrameTh = 7
+
+2:normalDistanceStableTh = 60
+macroDistanceStableTh = 16
+0.1:normalDistanceStableTh = 70
+macroDistanceStableTh = 20"	[0,1,2]三档可选越大灵敏度越高
+            2					
+        }					
+    },					
+    /* af_tunning_param_focus_t */	AfTunningParamFocus    afTunningFocus;				
+    {					
+        /* af_tunning_param_focus_step_t */					
+        {			"PD（激光）一大步+CD
+计算一大步步长和CDAF搜索范围
+CD步长和范围，PD步长(PD)"		
+            /* small_step_num */				CDAF确定搜索范围&步长-PD值小于Converge阈值场景的CDAF	整数步长
+            8,					
+            /* small_step_big_num */				CDAF确定搜索范围&步长一大步对焦完成+树干场景的CDAF	整数步长
+            12,					
+            /* normal_step */				CDAF确定搜索范围&步长一大步推完接近准焦位置时的CDAF	整数步长
+            32,					
+            /* face_step */				CDAF确定搜索范围&步长-face场景	整数步长
+            32,					
+            /* face_fine_step */				CDAF确定搜索范围&步长-face场景，finestep	整数步长
+            16,					
+            /* min_step */				CDAF确定搜索范围&步长-最小的步长	整数步长
+            8					
+        },					
+        /* af_tunning_param_focus_filter_t */					
+        {					
+            /* low_frequency_filter */			"正常亮度走此filter
+{0, AfStatGetLowFrequenceFilter5x15},
+{1, AfStatGetHighFrequenceFilter5x15},
+{2, AfStatGetFaceFilter5x15},
+{3, AfStatGetFaceFilter02_5x15},
+{4, AfStatGetAvgFilter5x15},"	滤波器	[0.4]枚举值
+            0,					
+            /* high_frequency_filter */			"亮环境走此filter
+"	滤波器	[0.4]枚举值
+            1,					
+            /* flat_high_frequency_filter */			平坦区走此filter	滤波器	[0.4]枚举值
+            0,					
+            /* face_filter */			人脸场景走此filter	滤波器	[0.4]枚举值
+            0					
+        },					
+        /* contrast_small_step_enable */	int contrastSmallStepEnable;		"点光源&flat场景生效
+assistContrastSmallStepFlatSceneEnable = contrastSmallStepEnable;
+assistContrastSmallStepPointlightSceneEnable = contrastSmallStepEnable;"	识别到点光源or平坦区时走小步长	[0,1]开关
+        0,	/* init focus position, 0:inif, 1:macro */				
+        /* init_focus_depth */	int initFocusDepth;		openCamera初始对焦位置	openCamera初始对焦位置	code值
+        2000					
+    },					
+    /* af_tunning_param_pd_t */					
+    {					
+        /* caf_pd_convergence_enable */			自动对焦PD自收敛	自动对焦PD自收敛	[0,1]开关
+        1,					
+        /* face_pd_convergence_enable */			face对焦PD自收敛	face对焦PD自收敛	[0,1]开关
+        1,					
+        /* taf_pd_convergence_enable */			touch对焦PD自收敛	touch对焦PD自收敛	[0,1]开关
+        1,					
+        /* pd_convergence_th */			PD自收敛的阈值	PD自收敛的阈值	[0,1]开关
+        0.12f,					
+        /* pd_contrast_small_step_enable */			PD大步+CD小步开关	PD大步+CD小步开关	[0,1]开关
+        0,					
+        /* pd_contrast_small_step */			"PD大步+CD小步，确定起始位置
+这个步长跟上面的步长有啥区别？"	PD大步+CD小步，根据PD位置确定起始位置	code值
+        10,					
+        /* open_pd_trigger_flag */			"photoOpenPdTriggerFlag = openPdTriggerFlag
+videoOpenPdTriggerFlag = openPdTriggerFlag"	是否支持PD触发对焦	[0,1]开关
+        1,					
+        /* af_tunning_param_pd_th_t */					
+        {					
+            /* af_tunning_param_pd_photo_th_t caf */					
+            {					
+                /* very_strong_point_light_th */			"PD置信度阈值
+整体为百分比，PD置信度阈值 = 该值 * 65535"	超强光下的置信度，如太阳	0-1 百分比
+                0.5f,					
+                /* strong_point_light_th */				强点光源下的置信度	0-1 百分比
+                0.3f,					
+                /* night_low_ev_th */				夜景切LV大于5	0-1 百分比
+                0.3f,					
+                /* night_middle_ev_th */				LV大于10 置信度阈值	0-1 百分比
+                0.3f,					
+                /* night_high_ev_th */				暗环境LV小于5 置信度阈值	0-1 百分比
+                0.5f,					
+                /* macro_th */				小于35cm为微距置信度阈值	0-1 百分比
+                0.1f,					
+                /* normal_th */				其余场景置信度阈值	0-1 百分比
+                0.1f					
+            },					
+            /* af_tunning_param_pd_photo_th_t taf */					
+            {					
+                /* very_strong_point_light_th */					
+                0.5f,					
+                /* strong_point_light_th */					
+                0.3f,					
+                /* night_low_ev_th */					
+                0.2f,					
+                /* night_middle_ev_th */					
+                0.3f,					
+                /* night_high_ev_th */					
+                0.4f,					
+                /* macro_th */					
+                0.1f,					
+                /* normal_th */					
+                0.1f					
+            },					
+            /* af_tunning_param_pd_photo_th_t zoom */					
+            {					
+                /* very_strong_point_light_th */					
+                0.2f,					
+                /* strong_point_light_th */					
+                0.2f,					
+                /* night_low_ev_th */					
+                0.1f,					
+                /* night_middle_ev_th */					
+                0.1f,					
+                /* night_high_ev_th */					
+                0.3f,					
+                /* macro_th */					
+                0.1f,					
+                /* normal_th */					
+                0.1f					
+            },					
+            /* af_tunning_param_pd_video_th_t */					
+            {					
+                /* video_face_pd_conf_th */				视频模式下人脸PD置信度	0-1 百分比
+                0.1f,					
+                /* video_human_pd_conf_th */				视频模式下人体trackingPD置信度	0-1 百分比
+                0.1f,					
+                /* video_high_freq_pd_conf_th */				视频高帧率模式PD置信度(大于30就是高帧率)	0-1 百分比
+                0.1f					
+            }					
+        }					
+    },					
+    /* af_tunning_param_video_t */					
+    {					
+        /* video_strategy */			"1为：PERFORMANCE_PRIORITY 性能优先（判断为Stable的阈值更小）是速度优先吗？
+0为普通模式  正常模式
+"	视频对焦策略	
+        0					
+    },					
+    /* af_tunning_fixed_switch_t */					
+    {					
+        /* laser_enable */				激光对焦	
+        1,					
+        /* pdaf_enable */				pdaf对焦	
+        1,					
+        /* tof_enable */				tof对焦	
+        0,					
+        /* fast_capture_enable */			运动抓拍开关--对焦		
+        0,					
+        /* taf_forced_focus_enable */			啥功能		
+        1,					
+        /* face_assist_enable */			搜了一下好像都是定义，没地方用		
+        1,					
+        /* front_or_back */			这个是后置配0前置配1，还是直接配CameraID，如果是CameraID，这个要怎么配？		
+        0					
+    }					

@@ -1,0 +1,76 @@
+OTP检测
+1.执行---打开ae详细日志.bat打开抓取log
+ 
+2.执行---0_cleanLog.bat清除样机内现有的log
+  
+3.打开相机，分别进行主摄、广角、长焦拍照
+4.退出后台，执行---getLoghis.bat拉取log
+ 
+5.对导出的log文件夹内的isp-log进行解压缩
+6.用Notepad++软件打开所有解压缩后的log文件
+7.Ctrl+F打开搜索框，输入<AeDrvGetOtpIso|269>cam_id:
+ 
+8.分析搜索结果
+
+每一个cam_id都有对应的otp信息（AE中的otp概念：只表示对于iso烧录的值）
+ 
+首先看AeOnSetOemIsoCmd（整机标定），cam_id对应相机序号（0主摄，1前置，2广角，3长焦，4红枫），fn[]四个非零值代表四个光圈值，oem_iso四个值对应四个光圈的ISO，oem_ios_valid（整机标定是否有效）和use_oem_iso（是否使用整机标定），两个都为1。OTP的值从这里取，否则取模组厂标定的值。
+AeDrvGetOtpIso（模组厂标定）注意上下文的cam_id，直接读取iso值。
+ 
+9.记录结果
+感光度检测
+感光度检测的意义：
+观察屏显上的数据是否符合环境光亮度，曝光表是否正常运行和显示
+感光度检测的流程：
+关闭超级微距、切normal、锁光圈
+1.	手机连接电脑，打开3A信息
+2.	打开AE_BOX光源，调到任意lv档位
+3.	将样机放在光源前
+4.	读取当前屏显的lv值并记录，屏显与环境光档位的10倍相差3左右及以内代表感光度符合预期
+起流曝光标定
+起流曝光标定的意义：
+检查在AE_BOX光源不同亮度下的曝光时间expo值和增益gain值，在avg_luma=0x17时，读取expo与gain值并记录
+起流曝光前：
+需要确定光箱与样机lux的关系，用于修改曝光表。
+对于任意档位的光源，设置完成后：
+1.	样后台退出相机，并用脚本清空log
+2.	样机放在光源前，开启相机，等待两秒关闭相机，退出后台
+3.	用脚本导出log
+4.	打开isp-log，搜索AeOnSetAeStreamRefInfoCmd，记录new_awb_lux的值
+5.	换一个光源档位，重复1-4步
+虽然只需要11个档位（一般是4-14档），但最好1-16档全做一遍。
+ 
+起流曝光标定的流程：
+1.	确认标定需要的脚本命令和曝光表；确认需要标定的模式（预览、video）和模组（主摄、长焦、广角）；确认手机电量和adb权限；执行关闭超级微距命令；
+ 
+2.	分别打开所需
+曝光表---提供阈值与参考参数；
+ 
+Excel---记录数据
+Cmd命令窗口---调试数据
+3.	Cmd命令固定gain值为0x100；
+改变光源档位lv16档；
+调试expo，查看屏显，avg_luma值是否为0x17，若大于0x17则依据曝光表减小expo,若小于0x17则依据曝光表增大expo直到avg_luma值为0x17。（若曝光时间达到10000，则可以调整gain值，以此类推）
+更换光源档位Lv16-1档，重复以上步骤（每调小一个档，曝光量增大2倍左右）
+注意：
+1.	避免手机息屏，在手机息屏时应该需要重新固定曝光时间expo和gain值
+2.	avg_luma在0x17附近一直变化时，可以考虑记录最近的变化值，比如0x18/0x16
+3.	50Hz频率下，除gain处于曝光表最大值或最小值外，需要确保expo为10000us的整数倍，否则会出现banding
+线性度检测
+线性度检测的意义：
+固定expo增加gain或者固定gain增加expo的方式验证曝光量是否线性增长。
+线性度检测是模组基础性能的验证方法，模组的线性度较差会产生亮度跳变的风险。
+线性度检测的流程：
+1.	检测前需确认minilsc关闭（可以不用关，如果minilsc没有标定的话可能造成不线性；在固定gain时，不用关minilsc）、超级微距关闭、切normal模式、锁光圈
+   
+
+2.	如何快速确定合适的expo和gain？可以遮黑相机将屏显上最大的expo或gain（或参数中曝光表的最大expo或gain）设置为固定值，比如当前实验为固定gain修改expo，则可以将最大expo设置为expo终止值，通过manualAE脚本调整gain值，直到屏显avg_luma的值达到200（转16进制）左右即可。固定expo修改gain，则可以将最大gain设置为gain终止值，通过脚本调整expo值，直到屏显avg_luma的值达到200（转16进制）左右即可。
+3.	
+将Log_analysis.py文件中的id改为所测模组的id。AE_BOX调至7档左右 
+SensorLinearTest.py文件中的操作：
+3.1	固定gain修改expo（expo_step一般设置为1000us，expo_start设置为1000us，expo_end设置为最大值，fix_gain设置为avglum达到200（转16进制）左右时的gain值；最小曝光线性度：expo_step一般设置为1us，expo_start设置为40us，expo_end设置为500us，fix_gain设置为avglum达到200（转16进制）左右时的gain值） 
+3.2	固定expo修改gain（gain_step一般设置为0x100（1倍gain），gain_start设置为0x100，gain_end设置为最大值，fix_gain设置为avglum达到200（转16进制）左右时的expo值） 
+3.3	以上设置完成后开始运行，运行结束后将log导出
+4.	画Log图
+Log图反映了avg_luma与gain/expo的现象关系，分别需要得到固定gain的Log图与固定expo的Log图 。运行test.py文件，选择log所在位置，运行完成即弹出log图，关注线不线性，不线性则调整AE_BOX档位重做几次，若还不线性则传递底软。
+ 

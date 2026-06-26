@@ -1,0 +1,162 @@
+分类A2:F19A2:F15A2:F19A2:F25A2:F32B7A2:G30A2:G32A2:L25A2:K25A2:J25A2:I25A2:H28A2:G28A2:F28	调试依赖项	要  求	领域	要求交付时间点	主摄
+器件	golden模组到位	golden挑选准确，整机到位	器件	项目开始调试前完成	golden 可选项
+	sensor PDAF spec	规格书信息描述精确，详细	器件	启动调试第一周	看一下信息，了解下，向器件同事要。
+	lens(景深，最近对焦距离、CRA、场曲、畸变)	CRA sensor与lens匹配；各模组最近对焦距离具有继承性，不同代产品保持一致；场曲尽量小；畸变尽量小	器件	启动调试第一周	景深表(一定要向器件要），如果有问题请器件分析
+	sensor(Tline\Vblank时间）	Vblank-exposure time>VCM settling time，Vblank建议值15ms以上	器件	启动调试第一周	推马达，马达稳定时间，可以使用C7自己check是否有问题
+	马达器件规格（马达类型(开闭环),马达行程，VCM StrokeAccuracy，moving tilt，AF Sensitivity，AF VCM linearity，AF Posture dependency，工作温度，稳定时间，AF机械行程，OIS-AF crosstalk）	规格书信息描述精确，详细	器件	启动调试第一周	了解即可
+	TOF激光（测距范围、测距精度、稳定性、分辨率、室内外一致性、玻璃场景、与camera中心偏差、热逃生温度）	规格书信息描述精确，详细	器件	启动调试第一周	TOF最远距离，每款激光不一样，底软去配
+	镜头景深表	景深表数据正确，景深越大越好，具体指标参照同期主流竞品	器件	启动调试第一周	景深表(一定要向器件要），如果有问题请器件分析
+OTP	AFC	OTP一次烧录正确，且可以正常读取	模组厂	启动调试第一周	看下正负号(一定是正号)，infinity->macro逐渐增大
+	PD offset	OTP一次烧录正确，且可以正常读取，数据无异常大或小的值	模组厂	启动调试第一周	"有两种数据(模组厂标、产线标）
+看好单位是PD值(一般范围在±1)还是code值比较大
+最后画fullsweep确定Pdoffset是否ok，如果不ok，分析是标定问题还是通路问题，模组厂标定问题找器件，产线的pdoffset问题找产线相关同事，通路调用问题找底软
+模组厂标用的是高通工具，他的pdoffset含义表示此时应该加上的数值
+产线pdoffset表示应该减去该值
+"
+	最近对焦距离	module.xml中minFocusDistance要与模组规格一致	底软	项目开始调试前完成	最近对焦距离
+	OTP烧录	主摄、广角、长焦/微距、前置/广角的OTP一次烧录正确，且可以正常读取正确。	底软/器件	项目开始调试前完成	"看能否dump出OTP文件
+如果能dump，那么通路没什么问题；
+无法dump就先找底软，具体代码在camxeepromdata.cpp"
+	DCC	OTP一次烧录正确，且可以正常读取，数据无异常大或小的值	模组厂	启动调试第一周	"一定是正号，如果是负号肯定错
+第二个otp里的DCC会乘上2^Qfactor次方，Qfactor一般是4，如果不是4可能烧录错误
+去掉Qfactor倍数后主摄QPD一般80，非QPD40，广角100，长焦20~30，如果跟常见数据差2倍以上怀疑有问题，拉通器件和模组厂分析"
+	gainmap	OTP一次烧录正确，且可以正常读取	模组厂	启动调试第一周	"都是正值；用来补偿左右像素亮度的
+左右不要差距太大
+如果有问题找器件拉通模组厂看"
+驱动	AFC 通路导通	AFC OTP读取正确，模组能够正常进行CDAF对焦	底软	启动调试第一周	"能够正常进行CD对焦
+AFCOTPdump正常
+如果有问题优先找底软同事看"
+	PDAF相关通路导通	PDAF OTP读取正确，check 中心四角 PD线性度ok，各个sensorModePDAF功能ok	底软	启动调试第一周	"能够进行PD对焦
+PD fullsweep无异常
+三方相机、HW相机各个模式PDAF功能ok"
+	setting 配置正确	bayer pattern、mirror、flip状态配置ok	底软	启动调试第一周	CDAF|pdaf对焦无异常
+	激光通路配置正确	激光能够正常读取数据，数据稳定，测距范围稳定	底软	启动调试第一周	激光数据正常读取
+工具	C7	用raw是否能正常标定，TDL等是否可以正常打开不报错（需要正确安装VisualC++插件）	工具组	项目开始调试前完成	看下是否能够正常使用
+	QPhotoTimemachine	拍照时光机	工具组	项目开始调试前完成	看下是否能够正常使用
+	Vangogh QVideoTimemachine2.0.1.1.exe	video时光机	工具组	项目开始调试前完成	看下是否能够正常使用
+	QAutoCompile	回读工具、抓raw等功能	工具组	项目开始调试前完成	看下是否能够正常使用
+	QAutoFocus	图片解析工具、AF fullsweep画图工具	工具组	项目开始调试前完成	看下是否能够正常使用
+	Potplayer	视频渲染手动设置为EVR(Vista/.Net3)	工具组	项目开始调试前完成	看下是否能够正常使用
+参数-Q	chromatixHAF.xml 对焦超时机制	"必须打开
+enableForceScanEnd
+maxScanCountThreshold 小于50
+enablePassiveScanTimeout"	效果	项目开始调试前完成	必须打开并check是否生效
+					
+
+
+
+
+
+
+
+Lens	景深/DOF	"景深越大越好，具体指标参照同期主流竞品
+(iphone、samsung)旗舰机景深规格"	景深红线也需要讨论给出	"云南玉石直播。景深越大，对焦的效果越好，失焦率下降，
+对焦体验提升"
+	"最近对焦距离
+minmum focus distance"	"各模组最近对焦距离具有继承性，不同代产品保持一致
+主摄:7cm，广角：2.5cm，前置：10cm
+3X tele:40cm, 5X\10X tele: 1m"	"主摄:8cm，广角：2.5cm，前置：20cm
+3X tele:40cm, 5X\10X tele: 1m"	"AE项目主摄12cm对焦。广角超级微距规格被用户吐槽。
+与模组空间结构设计、马达行程相关"
+	Chief Ray Angle	"lens的CRA和sensor的CRA需要匹配，要求不影响sensor的PD质量。
+通常会要求镜头CRA和sensor CRA差异不超过±3°，严格情况下会要求±2°以内。"		"imx520模组CRA影响PD效果。
+lens的CRA和模组的CRA需要匹配，
+该指标会影响到sensor的PD质量"
+	场曲 Field Curvature 	"场曲越小越好，微距场景的场曲会更大。
+具体的指标需要根据PQ质量确定，建议值：以微距30cm，相对于中心0视场的准焦位置，0.3视场准焦位置偏差接近0，0.5视场准焦位置偏差小10um, 0.7视场准焦位置偏差15um"	"80cm：0.3视场准焦位置偏差接近0，0.7视场准焦位置偏差5um
+30cm：0.3视场准焦位置偏差接近0，0.7视场准焦位置偏差20um"	"imx700场曲。
+通过不同视场through focus曲线对应的
+准焦位置差异来确定场曲，场曲越大，不同视场的清晰度差异会越大，且会影响到AF算法的对焦窗大小和位置配置。"
+	畸变Distortion	越小越好，会影响DCC值		影响不同的位置的DCC值，模组厂标定的不准确
+马达	Actuator type马达类型	建议采用close loop闭环马达		"闭环马达会更好，
+开环精度差（open loop），且存在姿势差"
+	AF Rated stroke马达行程	"考虑温漂的影响，马达设计线性行程要求大于
+需求的lens景深位移+100um(each for INF/macro)"		"马达行程与镜头重量、景深、微距规格相关，
+附加的100um其实和温度对马达行程的影响相关，需要根据实际的温漂情况确定"
+	AF VCM Stroke Accuracy	"1.马达Code烧录精度 + AF Stroke Accuracy + Moving Tilt带来的离焦量需要小于镜头焦深的1/3
+2.AF Stroke Accuracy＜3% of stroke or 1um"	5um	包括hall accuracy,temperature differences,posture dependency, hysteresis, driver IC control，AF Moving tilt & OIS Moving tilt(Total Moving tilt)and so on
+	"AF Moving tilt & OIS Moving tilt
+(Total Moving tilt)"	马达Code烧录精度 + AF Stroke Accuracy + Moving Tilt带来的离焦量需要小于镜头焦深		偏移量统一计入AF Stroke Accuracy计算
+	AF Sensitivity	"根据马达Code范围和AF Sensitivity
+范围确定1个Code移动的马达位移。
+对于normal马达，当前马达的规格一般是0.5um/1code,与PD精度值相关联。如果要提高最终的对焦精度，必须同时考虑提高AF Sensitivity和AF Stroke Accuracy"		"1.马达感度数值会影响到AF的步长设置
+（以code为单位）
+2.与光学要求的精度（MTF值）和对焦精度相关"
+	AF VCM linearity	VCM code v.s. lens shift的曲线线性度要好，且多次测量的曲线需要保持一致。马达运动多次，中间位置的lens shift最大和最小的偏差越小越好，一般值是< 15um	15um	"马达实际运动曲线与inf和Max点
+拟合直线在相同电流下的位移差异。这个指标的背后原因是什么，差异为什么这么大？实际对AF的影响没有看起来这么大的原因需要讨论。"
+	"AF Posture dependency
+（open loop）"	"闭环马达要求无姿势差。
+开环马达姿势差越小越好
+
+当前指标：
+<100um typ80um
+AF XY posture＜30um typ 20um"	马达不撞壁	
+	工作温度	Sensor和马达温度不能超过正常工作范围（当前是70度）		
+	Settling Time 稳定时间	"期望值：5ms@30um stroke +/- 2um stable
+底线值：
+10ms@30um stroke +/- 2um stable
+20ms@80um stroke +/- 2um stable"	"10ms@30um stroke +/- 2um stable
+20ms@80um stroke +/- 2um stable"	Vblank-exposure time>VCM settling time
+	AF Mechanical stroke	"1. 确认机构行程最大值，在考虑最大值的情况下需计算模组Lens顶部是否会接触到保护镜片。
+2. 确认机构行程最小值。最小值需大于线性行程+非线性区行程单边30um（中置马达60um）+马达姿态差。"		
+	OIS-AF crosstalk	OIS对AF的影响，理论上要求OIS-AF crosstalk + AF stroke accuracy < 1/3景深，一般这个门限采取普通AF stroke accuray精度，即3um或者5um		
+OIS	camera模组配置	每个camera模组都需要有OIS,PD密度低更需要OIS		every camera module should have OIS
+	防抖角度	1度		
+	防抖频率	10Hz		
+	压缩比	30dB		
+	AF-0IS crosstalk	NA		
+	防抖维度	NA,目前x-y平面2轴		
+sensor	Tline\Vblank时间	Vblank-exposure time>VCM settling time，Vblank建议值15ms以上	video mode下sensor settling time必须满足，影响DXO得分	
+PD	pp密度	pp密度越大越好，主摄：100%， 广角/长焦>=1/32	所有sensor模式1/32	pp密度越大，PDAF的效果越好
+	类型(type)	类型不限制，满足PD的指标要求即可		通常分为type1、type2、type3，类型不限制
+	微透镜	2*1, half-shield，dual,qudra（2*2 OCL）		
+	pp pattern	"pp像素和RGB像素的排列格式和bining格式;
+video mode(多种binning模式)都要满足PD的效果指标;
+PL和PR的同行隔行会影响PD效果，建议同行。"		
+	PD linearity	0.99,无多0点	0.98	"black and white ladder chart
+brightness:700lux"
+	PD offset	"before PD offser correction,
+abs|PD（contrast peak)| < 1 PD"	1	
+	Time Stability	infous position stardard deviation(PD)<=0.05	0.05	"black and white ladder chart
+brightness:700lux"
+	Prediction Ability	"after PD offser correction,
+abs|predict code-infocus code|<=1/3 DOF"	1 DOF	
+	Minimal Brightness	"100% PD density>=1 lux (infocus standard deviation(PD)<=0.1
+3% PD density>=10 lux (infocus standard deviation(PD)<=0.1"	"100% PD density>=1 lux (infocus standard deviation(PD)<=0.1
+3% PD density>=10 lux (infocus standard deviation(PD)<=0.1"	black and white ladder chart
+	Spacial Sampling Frequency	"both PD and confidence  are OK
+pd condifence should be low when pd is not good"		newspaper\simens chart
+	Minimal Texture	infocus standard deviation(PD)<=0.1		80% low contrat chart
+	Processing time	OTF,满足系统设计要求,10ms		
+	Memory usage	满足系统设计要求		
+	功耗	满足系统功耗要求		
+	"PD confidence and 
+ PD value的关联性"	"PD confidence and  PD value should be highly correlated,
+pd condifence should be low when pd is not good"		
+TOF	测距范围metering distance range	与camera模组的无穷远距离匹配，2cm~10m。	2cm~2.5m	当前TOF测试一般是最大2.5m，室外的测距范围只有1.5m左右。这个测距能力越大，对焦时可以参考的距离信息越准确。测距能力和camera模组的无穷远距离匹配即可。
+	测距精度metering accuracy	误差5%以内	10%	
+	稳定性time stability	"不受同频光干扰
+同一场景多次测量的差异在5%以内"		不受近景遮挡(eg：1m以外的人不受手指影响)、不错给深度(玻璃场景、高亮广告牌)
+	分辨率spatial resolution	越大越好，大于20*15（与对应成像camrea的FOV匹配）	主摄20*15	
+	室内外(indoor/outdoor)	室内外一致性		
+	玻璃场景(glass)	能够给出玻璃面和透射后背景的深度		
+	与成像camera的中心位置偏差	"
+确保TOF的FOV和camera的FOV在最近对焦距离有50%的重叠"	"确保TOF的FOV和camera的FOV
+在最近对焦距离有50%的重叠"	
+	热逃生温度	越高越好，最好不要关闭TOF		
+	TOF和camera的CSI接口	确保TOF和各camera能同时工作	TOF和各模组同时工作	
+激光	测距范围metering distance range	与camera模组的无穷远距离匹配，建议2cm~10m。	2cm~1.5m	
+	测距精度metering accuracy	误差5%以内	10%	
+	稳定性time stability	"不受同频光干扰
+同一场景多次测量的差异在5%以内"		不同供应商的器件是否有差异？怎么屏蔽这个差异？
+	与成像camera的中心重叠区域比例	"与主摄、广角的间距在7~12mm以内，
+确保激光的光斑和camera画面中心重叠50%"	"与主摄、广角的间距在7~12mm以内，
+确保激光的光斑和camera画面中心重叠50%"	
+产线/模组厂标定	AFC阈值	code阈值在1/3景深以内,最低一个景深以内	2 DOF	越小越好，code阈值在1/3景深(DOF)以内
+	PD offset标定	整机完成pd offset标定，采用3*3(普通PD)或者更密集的8*6(dual PD)		
+	PDAF check	模组厂和产线PDAF AB点check满足阈值		
+	无穷远的标定距离	模组厂无穷远的标定距离和模组的实际无穷远要匹配，标定的无穷远是真实的景深无穷远距离,尤其5X/10X TELE的无穷远需要关注		
+温漂Temprature	温漂系数	"主摄/广角：1code/1摄氏度；
+长焦：4code/1摄氏度；"	主摄/广角：2code/1摄氏度；	由于热胀冷缩效应，温度变化导致镜头焦距变化，以及驱动IC的温度影响，从而影响对焦位置。
+	温度传感器	各个模组需要配置温度传感器,温度传感器应该更靠近镜头	每个模组都需要温度传感器，误差+-2度	各个模组需要温度传感器读取lens的温度
+

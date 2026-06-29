@@ -1,0 +1,45 @@
+目的：将cam机的rgb域映射到ace机的rgb域上
+适用场景：最初是用在rgb-HVM方案中。有了红枫方案后，后置模组在ellip模式（普通拍照的极暗光以及望月特性会采用ellip模式）下仍是rgb-HVM方案，因此仍需要标定cam2ace参数
+
+数据标定
+采用专业模式 ISO 50，光圈 2.0 进行拍照。如果无法调整光圈，则使用默认光圈。在LED灯箱之中拍摄24色卡，使得24色卡占屏幕画面的80%左右，在八个不同的光源下进行拍图。24色卡分别处于屏幕画面的正中心、左上角、左下角、右上角、右下角。开启 RawDump，保存 RAW。
+image
+
+使用的软件Multi-Channel LED Light Source Software.exe：image
+打开软件，切换到对应的光序列：
+image
+image
+数据整理
+文件摆放方式：
+cam2ace
+├── Data_sorted
+|   ├── 01_2200K
+|   |   ├── color
+|   |   |   └── *.jpg # 24色卡居中
+|   |   └── shading
+|   |       ├── *.jpg # 24色卡居中
+|   |       ├── *.jpg # 24色卡左上
+|   |       ├── *.jpg # 24色卡右上 
+|   |       ├── *.jpg # 24色卡左下 
+|   |       └── *.jpg # 24色卡右下。注意：顺序不严格要求，该文件夹下需要放五张图片
+|   ├── 02_3000K
+|   ├── 03_4000K
+|   ├── 04_5000K
+|   ├── 05_6500K
+|   ├── 06_8000K
+|   ├── 07_LED3000K
+|   └── 08_LED4000K
+├── raw # 存放40个 raw 图的文件夹
+└── config.yaml
+​
+编写 config.yaml 文件，仅需要修改 pattern 和 sensor_name 即可。yaml 文件格式如下：运行代码时， yaml 文件如果包含中文字符，需要将全部中文字符删除，否则会报错
+process_ID_status: 1 # 从第几步开始，默认从第 1 步开始
+device: 3  # # 0: 'JB', 1: 'Draco', 2: 'Mona', 3: 'altaB & Barry & Allen', 10: 'airaw'  --> 每代手机 RAW 格式不同，默认选择 3
+pattern: bggr  # rggb or bggr --> RAW 的 BAYER PATTERN
+sensor_name: C018HWY  # 'C947UTF', 'C802UTF', 'C928HIV'... -->  模组的匿名化
+module: AltaB  # 'JadeB' or 'AltaB' -->  Altab及以后的手机均选择 AltaB
+​
+使用 Python 代码生成 CAM2ACE 参数
+文件路径：\\100.102.219.104\color\04_wiki_tools\calib_cam2ace.rar
+生成的参数包括：cam2aceAnchor_pq.h、cam2aceAnchor.dat、ellip_transmat_shiftbase.txt
+

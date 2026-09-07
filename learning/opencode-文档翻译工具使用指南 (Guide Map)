@@ -1,0 +1,236 @@
+面向人类用户的操作指南。AI代理的详细工作流定义见 SKILL.md。
+
+一、工具能做什么
+将英文PPT/PDF文档转换为中文Markdown格式，特点：
+
+源文档信息完整保留不省略（每句必译、表格不漏、参考文献完整）
+图片不嵌入，标注原文位置并附多模态AI图像描述
+表格保持原格式，数值逐项核对
+数学公式用LaTeX输出
+中文表达自然流畅，非逐字直译
+二、你需要准备什么
+项目	要求
+源文件	.pptx 或 .pdf 格式的英文文档
+Python环境	conda workbase 环境
+依赖库	PyMuPDF, python-pptx, pywin32, requests
+Microsoft PowerPoint	仅PPT转PDF时需要（已安装则无需额外操作）
+多模态API	qwen3d6-35b（内网API，通过config.ini配置）
+一次性安装依赖：
+
+conda activate workbase
+pip install PyMuPDF python-pptx pywin32 requests
+​
+配置API Key（首次使用必读）：
+
+API Key不硬编码在脚本中，通过配置文件读取，避免泄露。
+
+复制配置模板：
+copy config.ini.example config.ini
+​
+编辑 config.ini，填入真实的API Key：
+[api]
+url = http://aresai-ingress.rnd.huawei.com/AresMind/external/v1/chat/completions
+key = 你的真实API Key
+model = qwen3d6-35b
+timeout = 180
+max_retries = 3
+​
+config.ini 已在 .gitignore 中排除，不会被提交到代码仓库。发布时只包含 config.ini.example 模板。
+
+三、操作步骤总览
+第1步  提取文本表格     →  得到原文内容
+第2步  PPT转PDF(仅PPT)  →  为图像分析做准备
+第3步  多模态图像分析    →  AI逐页描述图片/图表/公式
+第4步  准备上下文文件    →  合并原文+图像描述
+第5步  分批润色翻译      →  子代理并行生成中文Markdown
+第6步  合并最终文件      →  拼接为完整中文Markdown
+第7步  质量检查          →  完整性/表格/术语核对
+​
+四、逐步操作说明
+第1步：提取文本和表格
+conda activate workbase
+python scripts/extract_content.py --type pptx --input "你的文件.pptx" > ppt_extract.txt 2>&1
+​
+PDF同理，将 --type pptx 改为 --type pdf，输出改为 pdf_extract.txt。
+
+结果： 生成 ppt_extract.txt，包含每张幻灯片的全部文字和表格内容。
+
+第2步：PPT转PDF（仅PPT需要）
+python scripts/export_ppt_to_pdf.py
+​
+前提： 修改脚本中的 PPT_PATH（你的PPT路径）和 PDF_OUTPUT（输出PDF路径）。
+
+结果： 生成 ppt_exported.pdf，后续用这个PDF渲染图片。
+
+第3步：多模态图像分析
+先测试API连通性：
+
+python scripts/test_multimodal.py
+​
+测试通过后，批量分析：
+
+python scripts/batch_analyze_pdf.py    # PDF分析
+python scripts/batch_analyze_ppt.py    # PPT分析
+​
+前提： 修改脚本中的文件路径、跳过页列表（纯文字页/章节标题页可跳过）、总页数。
+
+结果： 生成 pdf_page_analysis.json 或 ppt_slide_analysis.json，每页一条图像描述记录。
+
+特点：
+
+支持断点续传——中断后重新运行会跳过已完成的页
+每页分析后立即保存，不会因中断丢失进度
+81页PDF约需30-40分钟，31张PPT约需15-20分钟
+第4步：准备上下文文件
+python scripts/prepare_context.py
+​
+前提： 修改脚本中的提取文本路径、JSON路径、批次划分（默认PPT分2批、PDF分4批）、输出路径。
+
+结果： 生成 ppt_context_batch1.txt、ppt_context_batch2.txt（或 pdf_context_batch1~4.txt），每批约20页，内容为原文+图像描述的合并文本。
+
+第5步：分批润色翻译
+为每个上下文文件派遣一个子代理，并行翻译。
+
+子代理任务示例：
+
+请读取 E:\项目目录\ppt_context_batch1.txt，
+将PPT Slide 1-16的内容润色为自然流畅的中文Markdown，
+写入 E:\项目目录\ppt_md_part1.md
+
+要求：
+1. 源文档信息不省略，每句必译
+2. 中文表达自然流畅，不逐字直译
+3. 每页必须有"> [图表]"格式的图片描述
+4. 公式用LaTeX，术语首次出现用"英文（中文）"格式
+​
+并行派遣： 多个子代理同时工作，每个处理一个批次。
+
+结果： 生成 ppt_md_part1.md、ppt_md_part2.md（或 pdf_md_part1~4.md）。
+
+注意： 若某个子代理返回空结果，重新派遣该批次即可。
+
+第6步：合并最终文件
+python scripts/merge_final.py
+​
+前提： 修改脚本中的 BASE 目录、分片文件名、最终输出文件名、文件头内容（标题、来源文件、日期等）。
+
+结果： 生成最终中文Markdown文件，如 20260722_二阶段验收_验收材料_中文版.md。
+
+第7步：质量检查
+conda activate workbase
+python -c "
+import sys, io, re
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+with open('最终文件.md', 'r', encoding='utf-8') as f:
+    md = f.read()
+slides = re.findall(r'### Slide (\d+)', md)  # PPT用Slide, PDF用'### 第(\d+)页'
+print(f'覆盖: {slides[0]} - {slides[-1]} (共{len(slides)}页)')
+missing = set(str(i) for i in range(1, 32)) - set(slides)  # 31张PPT; PDF改为82
+print(f'缺失: {missing if missing else \"无\"}')
+bad = [c for c in ['浠ヤ','鏍囬','\ufffd'] if c in md]
+print(f'乱码: {bad if bad else \"无\"}')
+print(f'图表描述数: {len(re.findall(r\"> \\[图表\\]\", md))}')
+"
+​
+检查项：
+
+覆盖全部页/幻灯片，无遗漏
+无乱码
+每页都有图表描述
+关键数值存在（表格数据核对）
+参考文献作者名完整
+术语翻译一致
+五、各脚本用途速查
+脚本	用途	何时使用
+extract_content.py	提取文本和表格	第1步
+export_ppt_to_pdf.py	PPT转PDF	第2步（仅PPT）
+test_multimodal.py	测试多模态API	第3步开始前
+batch_analyze_pdf.py	批量分析PDF页面图片	第3步
+batch_analyze_ppt.py	批量分析PPT幻灯片图片	第3步
+prepare_context.py	合并原文+图像描述为上下文文件	第4步
+merge_final.py	合并Markdown分片为最终文件	第6步
+六、每个脚本需要修改的参数
+使用前必须修改脚本中的路径和参数，下表列出各脚本需修改的位置：
+
+脚本	需修改的参数
+export_ppt_to_pdf.py	PPT_PATH（PPT路径）、PDF_OUTPUT（PDF输出路径）
+test_multimodal.py	PDF_PATH、测试页码、提问内容
+batch_analyze_pdf.py	pdf_path、output_json、提取文本路径、skip_pages、总页数
+batch_analyze_ppt.py	ppt_pdf_path、output_json、提取文本路径、skip_slides、总幻灯片数
+prepare_context.py	提取文本路径、JSON路径、批次划分（batches列表）、输出路径
+merge_final.py	BASE目录、分片文件名、输出文件名、文件头内容
+extract_content.py	无需改脚本，通过命令行参数传路径
+七、常见问题
+Q: 提取的文本文件是乱码怎么办？
+A: Windows PowerShell重定向可能产生UTF-16编码。prepare_context.py和batch_analyze_*.py已内置多编码自动探测（utf-8/utf-16/utf-16-le/gbk/latin-1），无需手动处理。
+
+Q: 多模态API超时怎么办？
+A: 单页超时设为180秒，最多重试3次。批量脚本支持断点续传——中断后重新运行即可继续，不会重复分析已完成的页。
+
+Q: 子代理返回空结果怎么办？
+A: 重新派遣该批次的子代理即可。PDF第4批（Page 63-81）曾出现过这种情况，重新派遣后成功。
+
+Q: PPT转PDF失败怎么办？
+A: 确保：
+
+已安装Microsoft PowerPoint
+pywin32已安装（pip install pywin32）
+PPT文件路径无中文特殊字符问题（用绝对路径）
+Q: 跳过哪些页面不做多模态分析？
+A: 跳过纯文字页、章节标题页、参考文献页——这些页面没有图片/图表/公式，多模态分析无意义。具体跳过哪些页需根据实际文档内容判断，在 batch_analyze_*.py 的 skip_pages / skip_slides 集合中设置。
+
+Q: 翻译质量如何保证？
+A: 三层保障：
+
+子代理润色——按"不省略"原则生成初稿
+质量检查脚本——自动检查覆盖完整性、乱码、图表描述数量
+人工抽查——对文字密集页、表格页、参考文献页逐句核对
+八、预期耗时参考
+以31张PPT + 81页PDF为例：
+
+步骤	耗时
+第1步 提取文本	1-2分钟
+第2步 PPT转PDF	1-2分钟
+第3步 多模态分析	PPT约15-20分钟，PDF约30-40分钟
+第4步 准备上下文	1分钟
+第5步 分批润色	10-20分钟（并行）
+第6步 合并文件	1分钟
+第7步 质量检查	5-10分钟
+合计	约1-1.5小时
+九、输出文件说明
+最终生成的Markdown文件结构：
+
+# 文档中文标题
+
+> 来源文件: 原始文件名
+> 页数/幻灯片数: X页
+> 转换日期: YYYY-MM-DD
+> 说明: ...
+
+---
+
+## 术语对照表
+（术语表）
+
+---
+
+### Slide 1 / Page 1: 标题
+**[页面类型]**
+
+（润色后的中文正文）
+
+> [图表] 原文位置: Slide 1
+> [图表描述]: （多模态AI描述的图片/图表内容）
+
+（表格/公式如有）
+
+补充说明：（AI添加的技术背景解释，可选）
+
+---
+
+...（后续页面）
+
+## 附录: 图像分析说明
+​
+SKILL下载
+doc-converter.rar

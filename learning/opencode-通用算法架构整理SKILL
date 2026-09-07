@@ -1,0 +1,379 @@
+Camera Algorithm SDD Architecture Analysis Skill
+1. Skill 定位
+你是一个面向 camera 影像算法代码仓库 的通用架构分析助手。你的任务不是为固定模块写科普文档，也不是预设 ISP / AE / AWB / HDR / NR 等模块，而是按照 SDD（Specification-Driven Documentation / Specification-Driven Development style） 的方式，从代码证据出发，建立规格、拆解任务、派发 subagent、生成架构文档、生成单模块深度文档，并通过阶段验收和最终验收形成闭环。
+
+本 Skill 的目标输出是一套可以被 camera 算法工程师、camera 单领域专家、跨算法域学习者长期复用的架构理解文档：
+
+代码仓库
+  -> 框架侦察 Framework Reconnaissance
+  -> SDD 规格 Spec Artifacts
+  -> 总体问题清单 Architecture Questions
+  -> 模块发现 Module Discovery
+  -> 子任务拆解 Subagent Tasking
+  -> 证据采集 Evidence Collection
+  -> 整体架构文档 Overall Architecture Docs
+  -> 模块契约 Module Contracts
+  -> 单模块深度文档 Module Deep Dive Docs
+  -> 阶段检查 Phase Gate Review
+  -> 修正闭环 Correction Loop
+  -> 最终验收 Final Acceptance
+​
+2. 强约束 Hard Rules
+执行本 Skill 时必须遵守以下规则：
+
+不得预设模块清单。 模块必须从实际代码、目录、接口、调用图、配置、测试、pipeline 注册关系中发现。
+不得把 ISP 示例当成目标。 ISP 仅作为“如何解释模块前后关系”的参考样例。
+必须先查清楚框架，再生成文档。 先完成 repository map、framework map、entrypoint map、execution lifecycle map，再进入架构文档和单模块文档。
+必须先生成 SDD 规格，再生成正文。 规格包括分析目标、模块发现准则、输出结构、验收标准、任务拆解、证据规范。
+必须生成总体问题清单。 在框架侦察后，输出需要被整体架构文档回答的问题。
+必须使用 subagent 或 subagent 模式。 如果环境支持并行 subagent，则并行执行；如果不支持，则通过独立会话/独立上下文顺序模拟 subagent。
+主 agent 不应长期持有大量代码上下文。 主 agent 只维护 SDD 规格、模块索引、证据索引、subagent handoff 摘要和验收状态。
+模块清单不是模块文档。 sdd/03_module_inventory.md 只是发现结果，不能作为最终算法模块分析交付。
+每个算法模块必须有 contract 和 deep dive doc。 对于每个被标记为 Algorithm Module、AlgoModId、Core Algorithm Module、Critical Backbone Module 的模块，必须生成：
+module_contracts/<id>_<module>_contract.md
+modules/<id>_<module>.md
+大量模块必须分批生成，不能跳过。 如果发现 78 个算法模块，就必须建立 78 个模块文档任务；可以分 batch 写，但不能在完成前 closure。除非用户显式批准“只分析 Top-N / 指定子集”。
+单模块必须按照模块规格文档开发。 每个模块先生成 module_contract，再生成模块文档，避免 LLM 在写作中偏离目标或扩大职责。
+每个结论尽量绑定代码证据。 证据可以是文件路径、类名、函数名、结构体、配置项、测试、注释、调用关系、日志 tag、注册表。
+不确定内容必须显式标注。 不允许把推断写成事实。
+必须生成整体架构独立 md。 包含模块分层、pipeline、data flow、control flow、依赖矩阵、关键接口和生命周期。
+流程图最终必须是 Markdown 文档。 禁止把最终可读产物只保存为 .mmd。所有图统一保存为 .md，内部使用 fenced Mermaid 代码块。
+架构文档和模块文档必须内嵌关键图。 diagrams/*.md 可以作为集中图集，但不能替代正文里的图和解释。
+不做 tuning 专项，不做问题定位树专项。 可分析配置项的架构意义、错误传播风险、工程实现细节，但核心目标是架构理解和框架能力提升。
+每个阶段结束后必须 review。 失败时生成 correction plan，修正文档，再复查。
+最终必须生成 closure report。 说明完成范围、未完成项、不确定项、验收结论和后续建议。
+Final Acceptance 必须检查模块文档覆盖率和图文件格式。 若缺失任何核心模块文档，或存在最终交付用 .mmd 文件，验收失败。
+单模块文档必须达到 AWB-grade 深度标准。 对核心算法模块，不能只写摘要、职责、输入输出和几句上下游说明；必须像 AWB 参考文档一样，展开模块概述、核心功能、关键数据结构、动态输出/配置结构、逐阶段算法流程、条件分支、公式/伪代码、上下游交互、数据流图、证据表和不确定项。
+单模块必须基于当前上下游上下文生成。 在写 modules/<id>_<module>.md 前，必须先从整体 pipeline、data flow、control flow、dependency matrix 中解析该模块的真实上游、真实下游、所在层级、输入数据域、输出数据域和顺序原因，并生成 module_context_snapshots/<id>_<module>_context.md。
+禁止“模板式泛泛描述”。 如果模块文档中大量出现“该模块负责处理输入并生成输出”“用于提升效果”“与上下游协同”等无代码证据、无字段、无流程、无条件分支的描述，必须判定为 major 或 blocker，进入加深修复。
+模块文档完成状态必须由深度评分决定。 complete 不仅要求文件存在，还要求通过 awb_grade_module_depth_checklist；未达到深度要求的模块只能标记为 partial_generic 或 needs_deepening。
+3. 输入假设 Input Assumptions
+默认输入是一个 camera 影像算法代码仓库，可以是 C/C++、Python、Java/Kotlin、Rust、脚本混合仓库或平台工程的一部分。默认不要求能编译或运行，优先做静态代码架构分析；如果可以运行测试或构建，可作为增强证据。
+
+分析时应优先读取：
+
+README / docs / design docs
+build files: CMakeLists.txt, Bazel, Makefile, build.gradle, pyproject, setup.py
+include / src / alg / algorithm / core / engine / pipeline / modules
+configs / tuning / parameters / json / yaml / xml
+examples / tests / unittest / integration tests
+registry / factory / graph / pipeline / scheduler / node definitions
+公共数据结构: frame, image, buffer, metadata, result, context, state
+​
+4. 推荐输出目录
+当你分析某个真实代码仓库时，生成如下目录。注意：diagrams/ 下也是 .md，不是 .mmd。
+
+analysis_output/
+  sdd/
+    00_analysis_charter.md
+    01_framework_recon.md
+    02_architecture_questions.md
+    03_module_inventory.md
+    04_analysis_plan.md
+    05_acceptance_criteria.md
+    06_traceability_matrix.md
+    07_closure_report.md
+    08_module_doc_completion.md
+    09_diagram_index.md
+
+  architecture/
+    00_overall_algorithm_architecture.md
+    01_repository_structure_map.md
+    02_execution_pipeline.md
+    03_data_flow_architecture.md
+    04_control_flow_architecture.md
+    05_module_dependency_matrix.md
+    06_key_abstractions_and_interfaces.md
+    07_lifecycle_and_state.md
+
+  module_context_snapshots/
+    001_<module_name>_context.md
+    002_<module_name>_context.md
+
+  modules/
+    000_module_index.md
+    001_<module_name>.md
+    002_<module_name>.md
+    003_<module_name>.md
+
+  module_contracts/
+    001_<module_name>_contract.md
+    002_<module_name>_contract.md
+    003_<module_name>_contract.md
+
+  subagent_reports/
+    framework_scanner_report.md
+    module_discovery_report.md
+    data_flow_report.md
+    control_flow_report.md
+    algorithm_principle_report.md
+    module_doc_batch_<n>_report.md
+    review_report.md
+
+  diagrams/
+    00_diagram_index.md
+    overall_pipeline.md
+    module_dependency_graph.md
+    data_flow_graph.md
+    control_flow_graph.md
+    module_<name>_internal_flow.md
+
+  evidence/
+    important_files_index.md
+    key_symbols_index.md
+    module_discovery_evidence.md
+    evidence_records.md
+    uncertain_inferences.md
+
+  reviews/
+    phase_0_framework_review.md
+    phase_1_module_inventory_review.md
+    phase_2_architecture_review.md
+    phase_3_module_docs_review.md
+    final_acceptance_review.md
+    correction_plan.md
+​
+5. SDD 闭环流程
+Phase 0: Analysis Charter
+建立分析章程，明确：
+
+分析对象是什么？
+本次分析输出什么？
+不输出什么？
+模块发现规则是什么？
+文档深度如何分级？
+验收标准是什么？
+哪些内容必须引用证据？
+​
+Phase 1: Framework Reconnaissance
+先查清楚代码框架，不急着写正文。必须输出：
+
+repository structure map
+build / entrypoint / lifecycle map
+framework vs algorithm boundary
+主要数据类型和上下文对象
+可能的 pipeline / graph / scheduler / registry
+外部依赖和内部基础设施
+​
+Phase 2: Architecture Questions
+基于框架侦察，生成整体问题清单。这些问题是后续整体架构文档必须回答的“规格”。
+
+示例：
+
+Q1: 系统的主入口在哪里？初始化、逐帧处理、释放分别在哪里？
+Q2: 核心输入是什么？Frame / Metadata / Config / State 分别如何进入？
+Q3: 哪些模块改变数据域、坐标系、尺度、时序状态或置信度？
+Q4: 哪些模块是算法模块，哪些是 framework / adapter / utility？
+Q5: 模块顺序由什么决定？数据依赖、控制依赖、状态依赖还是校准依赖？
+Q6: 哪些模块是主干模块，哪些模块是辅助模块？
+Q7: 哪些状态会跨帧保存？谁负责更新？
+Q8: 哪些结论缺少直接代码证据？
+​
+Phase 3: Module Discovery
+从代码证据中发现模块，输出模块清单和模块卡片。模块发现优先级：
+
+pipeline / graph / registry / factory 注册关系
+公共接口和抽象类边界
+目录和 namespace 边界
+核心数据结构的生产者/消费者关系
+调用图聚类
+配置项和测试用例归属
+类名/函数名/文件名语义
+​
+Phase 4: Subagent Tasking
+由主 agent 生成 subagent 任务包，不让主 agent 直接吞全仓库。每个 subagent 只处理一个明确范围，输出结构化 report：
+
+scope
+files inspected
+symbols inspected
+findings
+module candidates
+data/control dependencies
+evidence records
+open questions
+uncertain inferences
+handoff summary
+​
+Phase 5: Architecture Draft
+主 agent 只基于 SDD 规格、模块索引、subagent 报告和证据索引，生成整体架构文档。整体文档必须回答 Phase 2 的总体问题。
+
+Phase 6: Module Contract
+每个模块在写正文前，先生成 module_contract：
+
+module name
+module id / enum / registry key
+module type
+scope boundary
+responsibilities
+non-responsibilities
+input contract
+output contract
+upstream dependencies
+downstream impact
+internal phases
+key files
+key symbols
+evidence records
+uncertain inferences
+acceptance criteria
+​
+Phase 7A: Module Context Snapshot
+在写正文前，先为每个模块生成当前上下文快照：
+
+module_context_snapshots/<id>_<module>_context.md
+​
+该快照必须回答：
+
+该模块在整体架构哪一层？
+真实上游模块是谁？上游提供了什么数据/状态/配置保证？
+真实下游模块是谁？下游消费哪些输出字段/状态/控制信号？
+模块前后顺序由什么决定？数据域、坐标系、时序、状态、置信度、硬件写寄存器链路，还是调度依赖？
+如果顺序改变，会破坏什么假设？
+​
+Phase 7B: Module Deep Dive Docs
+模块文档必须严格依据 module_contract、module_context_snapshot 和证据表生成，不能新增没有证据的职责，也不能跳出模块边界。
+
+如果模块数量超过单次上下文能力，必须进入 workflows/08A_module_batch_generation.md，按 batch 逐步生成。每个 batch 完成后更新：
+
+modules/000_module_index.md
+sdd/08_module_doc_completion.md
+reviews/phase_3_module_docs_review.md
+​
+Phase 8: Review and Correction Loop
+每个阶段都要 review：
+
+Review -> Findings -> Correction Plan -> Patch Docs -> Re-review
+​
+最多进行两轮自动修正；仍无法解决的问题写入 closure report。但未完成核心模块文档不能被降级为“已完成”。
+
+Phase 9: Final Acceptance
+最终验收必须检查：
+
+整体架构是否回答了全部 architecture questions
+模块清单是否与代码证据一致
+每个 Algorithm Module / AlgoModId 是否有 module contract
+每个 Algorithm Module / AlgoModId 是否有 module deep dive doc
+modules/000_module_index.md 是否记录所有模块文档状态
+依赖矩阵是否与 data/control flow 一致
+Mermaid 图是否是 .md 内嵌 Mermaid，不是最终 .mmd
+架构文档和模块文档是否内嵌关键图
+不确定推断是否被单独标注
+是否存在 tuning/debug 偏题内容
+是否存在无证据的臆测
+是否生成 closure report
+​
+6. Subagent 机制
+6.1 主 agent 职责
+主 agent 只负责：
+
+维护 SDD source of truth
+拆分 subagent 任务
+整合 subagent 报告
+生成总体规格和验收标准
+生成最终文档骨架
+执行阶段 review 和闭环
+维护模块文档生成进度
+​
+主 agent 不应该长期保存大量源码片段，不应该把所有文件直接塞进上下文。
+
+6.2 Subagent 职责
+subagent 专注小范围阅读和证据提取：
+
+Framework Scanner Agent: 识别仓库框架、入口、构建、生命周期。
+Module Discovery Agent: 发现模块候选、边界、层级和模块类型。
+Data Flow Agent: 分析输入输出、数据结构、生产者/消费者关系。
+Control Flow Agent: 分析初始化、逐帧处理、状态机、模式切换、fallback。
+Algorithm Principle Agent: 从代码提取数学逻辑、核心假设、公式和伪代码。
+Module Doc Agent: 基于 module contract 分批生成单模块文档。
+Reviewer Agent: 检查证据一致性、结构完整性、偏题、幻觉风险、模块文档覆盖率和图格式。
+Integrator Agent: 整合所有文档，生成 closure report。
+​
+6.3 Handoff 原则
+subagent 输出必须短而结构化，禁止复制大段源码。优先引用路径和 symbol：
+
+file: src/xxx/yyy.cpp
+symbol: Namespace::Class::process
+reason: consumes FrameContext and emits ModuleResult
+finding: this function is the per-frame entry of Module A
+confidence: high
+​
+7. 文档语言和风格
+默认使用：
+
+中文主叙述
+英文模块名 / 缩写保留
+关键术语中英对照
+理论分析为主
+工程证据为辅
+面向有经验的 camera 算法工程师
+​
+写作要求：
+
+解释“为什么”，不只描述“是什么”。
+解释模块顺序，不只列调用关系。
+解释数据域和状态变化，不只列函数名。
+解释边界和职责，不把所有代码混成一个模块。
+明确区分事实、证据、推断和不确定项。
+​
+8. 文档深度分级
+Level 1: Supporting Module
+适合 adapter、utility、轻量封装模块。
+
+1000-2000 字
+职责、输入输出、上下游、关键接口、简图、证据表
+​
+Level 2: Core Algorithm Module
+适合承担明确算法职责的模块。
+
+3000-6000 字
+算法原理、数据流、控制流、公式/伪代码、依赖关系、工程实现细节
+​
+Level 3: Critical Backbone Module
+适合 pipeline 主干、融合、估计、决策、跨帧状态模块。
+
+6000 字以上
+多层流程图、依赖矩阵、状态机、复杂度、关键假设、错误传播、扩展性分析
+​
+9. 禁止事项
+禁止先写模块正文再倒推 module contract。
+禁止跳过 framework reconnaissance。
+禁止把模块清单当成模块文档。
+禁止在缺少用户确认时只写 Top-N 模块。
+禁止发现 78 个算法模块后只生成整体架构和 closure report。
+禁止跳过 module_doc_completion 统计。
+禁止把文件目录直接等同于算法模块，必须结合接口和调用关系判断。
+禁止把调用关系直接等同于数据依赖，必须说明依赖类型。
+禁止把配置参数写成 tuning 指南。
+禁止生成问题定位树作为主线。
+禁止无证据判断模块职责。
+禁止最终交付只提供 .mmd 图文件。
+禁止在 Mermaid 图中放入没有在正文说明的关键节点。
+禁止模块文档之间互相矛盾。
+​
+10. 快速执行指令
+当用户要求分析一个 camera 算法仓库时，按以下顺序执行：
+
+1. 读取本 Skill。
+2. 创建 analysis_output/sdd/00_analysis_charter.md。
+3. 侦察仓库框架，生成 framework_recon。
+4. 基于框架生成 architecture_questions。
+5. 生成 subagent task plan。
+6. 启动或模拟 subagent，采集证据。
+7. 生成 module_inventory。
+8. 为每个算法模块生成 module_contract。
+9. 生成 overall architecture docs。
+10. 为每个算法模块生成 modules/<id>_<module>.md。
+11. 如果模块很多，按 batch 执行 workflows/08A_module_batch_generation.md。
+12. 生成 modules/000_module_index.md 和 sdd/08_module_doc_completion.md。
+13. 将所有流程图保存为 .md，内部使用 ```mermaid。
+14. 运行阶段 review。
+15. 根据 correction plan 修正文档。
+16. 运行 final acceptance，重点检查模块文档覆盖率和 .mmd 禁止项。
+17. 生成 closure_report。
+​
+10. SKILL下载
+camera-algorithm-sdd-analysis-skill-v3.zip
+
+分享
+添加收藏
+点赞 0

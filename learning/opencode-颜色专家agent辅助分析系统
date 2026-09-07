@@ -1,0 +1,112 @@
+OpenCode 网页端使用说明
+会议录屏地址：https://w3.huawei.com/emeeting/#/aiSummary/A474ADDBEBC33D083A89C5E969C66DE9/4
+一、访问地址
+当前服务器已开放 3 个 OpenCode Web 端口：
+http://服务器IP:4096
+http://服务器IP:4097
+http://服务器IP:4098
+例如：
+http://100.103.216.39:4096
+http://100.103.216.39:4097
+http://100.103.216.39:4098
+大家可以任选一个端口进入使用。
+建议多人同时使用时尽量错开端口，例如：
+用户A 使用 4096
+用户B 使用 4097
+用户C 使用 4098
+避免多人在同一个端口里同时操作，防止会话或任务互相影响。
+也推荐同事打开两个SKILL在不同的端口下使用，分开执行任务
+比如
+
+camera-domain-expert-4stage 使用 4096
+color-problem-analyzer 使用 4097
+二、进入 OpenCode 网页端
+打开浏览器，输入其中一个地址：
+http://服务器IP:4096
+或：
+http://服务器IP:4097
+或：
+http://服务器IP:4098
+如果页面提示输入用户名和密码，请输入管理员提供的账号密码。
+三、打开项目目录（重要，根据需求选择不同的工作目录）
+进入 OpenCode 页面后，点击页面中的 打开项目 / Open Project 按钮。
+在项目路径中输入：
+D:\opencode\soft-hard-joint-work (这个是软硬联合相关资源工作空间，对应camera-domain-expert-4stage SKILL)
+D:\opencode\color-problem-analysis\knowledge (这个是颜色专家相关资源工作空间，对应color-problem-analyzer SKILL)
+然后确认打开。
+打开成功后，当前 OpenCode 的工作目录应切换到：
+D:\opencode\soft-hard-joint-work
+或者
+D:\opencode\color-problem-analysis\knowledge
+后续所有问题分析、代码读取、文件修改，都会基于这个工作目录进行。
+四、测试大模型通讯是否正常
+切换到项目工作目录后，先在 OpenCode 网页端输入一个简单测试问题，例如：
+你好，请简单回复一下，确认当前大模型通讯正常。
+或者：
+test
+如果模型能够正常回复，说明 OpenCode 与大模型通讯正常，可以继续使用。
+如果没有回复、报错、超时，请联系魏俊旭 w00609324。
+五、选择 Camera 专家 Skill（重要，根据需求选择不同的SKILL）
+确认模型通讯正常后，需要选择对应的专业 Skill。这里选择的SKILL需要和上面的工作空间相对应(python代码执行 windows下CD容易失败，切换到工作空间杜绝CD命令)
+在 OpenCode 页面中切换到 Skill 选择区域
+如果问题是希望偏向硬件相关知识更多，那么选择
+camera-domain-expert-4stage
+如果问题是希望软效果和ISP相关知识更多，那么选择
+color-problem-analyzer
+六、正式提问方式
+建议每次提问时，尽量说明清楚以下信息：
+1. 当前要分析的问题是什么
+2. 涉及哪个模块、代码、文档或实验现象
+3. 设计是主摄广角还是长焦、模式是什么
+软硬联合实例：
+/camera-domain-expert-4stage Skill 当前发现在夜景视频上比较暗的地方，出现很明显的颜色闪烁，一会儿绿，一会儿红，但是正常非暗区的地方颜色是稳定的，这个可能是什么原因
+颜色辅助分析实例：
+/color-problem-analyzer 在预览界面上发现当代产品在高饱和的颜色，特别是红色和橙色上的彩噪比历史产品大很多。但是噪声的人说RAW上的噪声水平和模型数值都差不多，没有显著变差，但是在YUV之前发现就有这个问题了，可能是什么原因。
+##注意##：因为opencode web方式，其刷新有问题，所以切换对话后就看不到原本对话信息了，这是正常的，最后会生成md文档。不过建议还是在对话的时候保持对话窗口。
+七、使用注意事项
+不要多人同时在同一个端口里操作复杂任务。 如果多人一起用，建议分别使用 4096、4097、4098。
+当前配置下，所有端口打开的是同一个项目目录：
+D:\opencode\soft-hard-joint-work
+ 
+重要代码修改前先备份。 如果需要让 Agent 修改代码，建议先确认当前文件状态，避免误改。
+每次开始正式任务前，先测试模型通讯。 确认模型能正常回复后，再选择 Skill 并开始正式提问。
+提问时尽量明确目标。 不要只写“帮我看看”，最好说明希望它做什么，例如“定位问题原因”“检查方案合理性”“输出完整代码”“整理成文档”。
+八、推荐使用流程总结
+1. 浏览器打开：
+   http://服务器IP:4096
+   或 http://服务器IP:4097
+   或 http://服务器IP:4098
+
+2. 输入账号密码进入 OpenCode 网页端。
+
+3. 点击打开项目 / Open Project。
+
+4. 输入项目路径：
+   D:\opencode\soft-hard-joint-work或者D:\opencode\color-problem-analysis\knowledge
+
+5. 在网页端输入测试问题，确认大模型通讯正常。
+
+6. 选择 Skill：
+   camera-domain-expert-4stage或者/color-problem-analyzer
+
+7. 输入正式问题，开始使用。
+九、常见问题
+1. 页面打不开
+先检查地址是否正确：
+http://服务器IP:4096
+http://服务器IP:4097
+http://服务器IP:4098
+如果某个端口打不开，换另一个端口试试。
+2. 页面能打开，但模型不回复
+先输入简单测试问题：
+你好，请回复“模型通讯正常”。
+如果仍然无响应，换另一个端口尝试。
+3. 找不到项目目录
+确认输入路径必须是：
+D:\opencode\soft-hard-joint-work
+注意不要写错大小写、斜杠或目录名。
+4. 找不到 Skill
+确认选择的是：
+camera-domain-expert-4stage
+如果没有看到该 Skill，可以先刷新页面，或者换一个端口进入。
+十、生成结果路径

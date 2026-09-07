@@ -1,0 +1,653 @@
+PPT Agent System 使用指南
+本文档面向最终用户和接手 Agent。涵盖：环境需求、新用户从零部署、输入材料准备、操作步骤、OpenCode Agent 调用指南、CLI 命令速查、常见问题。
+
+架构设计详见 docs/design.md，交接信息详见 docs/handover.md。
+
+1. 环境需求总览
+在开始之前，请确认你具备以下全部条件。每一项都是必需的，缺一不可。
+
+1.1 操作系统
+Windows 10/11（PowerShell 5.1+）
+项目在 Windows 上开发和测试，路径和编码均针对 Windows 优化
+1.2 Python 环境
+项目	要求	说明
+Python 版本	>= 3.11（推荐 3.13）	代码使用 `str
+Conda 环境	必须使用名为 py313 的环境	项目 AGENTS.md 强制要求
+执行方式	conda run --no-capture-output -n py313 python ...	不要用 base 环境
+Python 依赖包：
+
+包	版本	用途	必需?
+python-pptx	>= 1.0	PPTX 构建与解析	必需
+python-docx	>= 1.0	DOCX 文档解析	必需
+openpyxl	>= 3.0	XLSX 表格解析	必需
+Pillow	>= 10.0	图片处理 + 占位渲染	必需
+PyYAML	>= 6.0	YAML 配置文件	必需
+pdfplumber	>= 0.9	PDF 文件解析	可选（如需处理 PDF 材料）
+matplotlib	(自动安装)	图表生成	必需（python-pptx 依赖）
+pytest	>= 7.0	单元测试	开发时需要
+1.3 LLM 模型
+系统通过 AresMind API（华为内部 LLM 服务，OpenAI 兼容格式）调用大模型。必须具备多模态模型访问权限。
+
+模型	类型	用途	必需?
+qwen3d6-35b	多模态	图片分析、文本生成、规划	必需（核心管线依赖）
+vibe-coding	纯文本	Agent 编排、规划	必需（OpenCode Agent）
+deepseek-reasoner	纯文本	规格生成、构建、验收	必需（OpenCode Agent）
+关键点：
+
+系统的核心管线（S05b 核心数据库、S07a 图片分配）依赖多模态模型分析图片内容
+如果只有纯文本模型，图片只能使用客观元数据（文件名、尺寸、hash），无法理解图片内容，PPT 质量会大幅下降
+API 端点：http://aresai-ingress.rnd.huawei.com/AresMind/external/v1/chat/completions
+需要有效的 API Key，配置在 config/llm.yaml（gitignored，不提交）
+1.4 OpenCode Agent 系统
+本项目设计为通过 OpenCode 多 Agent 系统调度。
+
+项目	要求
+OpenCode	已安装并可用
+项目识别	项目根目录有 opencode.json，OpenCode 自动识别 13 个 Agent 和 11 个 Skill
+默认 Agent	ppt-orchestrator（主调度 Agent）
+Agent 模型	各 Agent 定义在 .opencode/agents/*.md，模型已配置好
+1.5 多模态 MCP 工具（image-analyzer）
+重要：接手开发 Agent（如 vibe-coding 模型）本身不支持读取图片。当需要检查渲染效果、分析 PPT 截图时，必须使用 image-analyzer MCP 工具。
+
+工具	用途	说明
+image-analyzer_analyze_image	分析单张图片	传入图片路径 + 问题，返回文字描述
+image-analyzer_analyze_images	对比多张图片	传入多张图片路径，返回对比分析
+image-analyzer_analyze_pdf	分析 PDF 文件	逐页转图片后分析
+image-analyzer_analyze_ppt	分析 PPT/PPTX 文件	逐页转图片后分析
+使用场景：
+
+检查 render/slide_*.png 渲染效果
+分析历史 PPT 的版式和配色
+对比修改前后的 PPT 效果
+规则：
+
+纯文本模型 Agent（vibe-coding, deepseek-reasoner）不得用 read 工具直接读取图片（会报错）
+必须用 image-analyzer MCP 工具分析图片
+多模态模型 Agent（qwen3d6-35b 等）可以直接读取图片
+1.6 渲染器（可选但推荐）
+PPTX 渲染为 PNG 预览图需要以下之一：
+
+渲染器	说明	安装方式
+LibreOffice	真实 PPTX 渲染（推荐）	安装 LibreOffice，确保 soffice 在 PATH
+Pillow	占位图渲染（fallback）	已在 Python 依赖中，无需额外安装
+config/renderer.yaml 中 mode: auto 会优先尝试 LibreOffice，失败则 fallback 到 Pillow 占位图。
+
+1.7 网络
+能访问 AresMind LLM API（华为内网）
+能访问 pip 源安装 Python 依赖
+1.8 Git
+已安装 Git
+项目已通过 Git 管理版本，重要修改前应 git commit
+2. 新用户从零部署指南
+假设你拿到了一台新电脑或你是新接手的用户，按以下步骤从零完成部署。
+
+Step 1: 安装基础软件
+# 1.1 安装 Git (如未安装)
+# 下载 https://git-scm.com/download/win 并安装
+
+# 1.2 安装 Miniconda 或 Anaconda
+# 下载 https://docs.conda.io/en/latest/miniconda.html 并安装
+
+# 1.3 安装 OpenCode (如需 Agent 调度)
+# 按照公司内部指引安装
+
+# 1.4 安装 LibreOffice (推荐，用于 PPTX 渲染)
+# 下载 https://www.libreoffice.org/download/ 并安装
+# 确保 soffice 在 PATH:
+#   默认路径: C:\Program Files\LibreOffice\program\soffice.exe
+​
+Step 2: 获取项目代码
+# 2.1 克隆项目（如果有远端仓库）
+git clone <repo_url> ppt_agent_sdd_design_bundle
+cd ppt_agent_sdd_design_bundle
+
+# 或者：直接复制项目目录到新电脑
+​
+Step 3: 创建 Python 环境
+# 3.1 创建 conda 环境 py313
+conda create -n py313 python=3.13 -y
+
+# 3.2 安装 Python 依赖
+conda run -n py313 pip install python-pptx>=1.0 python-docx>=1.0 openpyxl>=3.0 "Pillow>=10.0" PyYAML>=6.0 pdfplumber>=0.9
+
+# 3.3 验证依赖安装
+conda run -n py313 python -c "import pptx, docx, openpyxl, PIL, yaml, pdfplumber; print('All dependencies OK')"
+# 期望输出: All dependencies OK
+​
+Step 4: 配置 LLM API
+# 4.1 复制配置模板
+Copy-Item config\llm.yaml.example config\llm.yaml
+
+# 4.2 编辑 config/llm.yaml，填入你的 API key
+# 用文本编辑器打开 config/llm.yaml，将 api_key: YOUR_API_KEY_HERE 改为你的真实 API key
+# 其他字段保持默认即可
+
+# 4.3 验证配置文件存在
+Test-Path config\llm.yaml
+# 期望输出: True
+​
+Step 5: 初始化工作区
+# 5.1 初始化目录结构
+conda run --no-capture-output -n py313 python tools\ppt_agent\cli.py init workspace
+
+# 5.2 系统健康检查
+conda run --no-capture-output -n py313 python tools\ppt_agent\cli.py doctor
+# 期望输出: All checks passed.
+​
+Step 6: 准备历史风格库（首次运行需要）
+历史风格库是从历史 PPT 中挖掘的配色、字体、版式信息，用于让生成的 PPT 沿用统一风格。
+
+# 6.1 把历史 PPT 文件放入 PPT_original/ 目录
+# 至少放 1 个历史 PPTX 文件
+
+# 6.2 入库历史材料 (S03)
+conda run --no-capture-output -n py313 python tools\ppt_agent\cli.py history ingest --source PPT_original/
+
+# 6.3 挖掘风格 (S04)
+conda run --no-capture-output -n py313 python tools\ppt_agent\cli.py style mine --profile default
+
+# 6.4 验证风格画像已生成
+Test-Path data\library\styles\style_profile.json
+# 期望输出: True
+​
+注意：S03 和 S04 是一次性建设阶段，只需运行一次。后续所有 job 共享同一个风格库。如果历史 PPT 没有变化，不需要重新运行。
+
+Step 7: 验证部署
+# 7.1 验证 CLI 可用
+conda run --no-capture-output -n py313 python tools\ppt_agent\cli.py --help
+# 期望: 显示命令列表
+
+# 7.2 验证 LLM 连通性 (创建一个测试 job 并跑 S05)
+conda run --no-capture-output -n py313 python tools\ppt_agent\cli.py job create --title "部署验证"
+# 记下输出的 JOB_ID
+
+# 7.3 验证 image-analyzer MCP (在 OpenCode 中)
+# 如果 image-analyzer MCP 已配置，尝试分析一张测试图片
+​
+部署验证清单
+检查项	命令	预期结果
+Python 环境	conda run -n py313 python --version	Python 3.13.x
+依赖完整	conda run -n py313 python -c "import pptx, docx, openpyxl, PIL, yaml"	无报错
+LLM 配置	Test-Path config\llm.yaml	True
+风格画像	Test-Path data\library\styles\style_profile.json	True
+CLI	conda run -n py313 python tools\ppt_agent\cli.py doctor	All checks passed
+LibreOffice	soffice --version（如已安装）	版本号
+OpenCode	在项目目录启动 OpenCode	默认 Agent = ppt-orchestrator
+常见部署问题
+问题	原因	解决
+ModuleNotFoundError: No module named 'pptx'	依赖未安装	conda run -n py313 pip install python-pptx
+FileNotFoundError: config/llm.yaml	未创建配置	Copy-Item config\llm.yaml.example config\llm.yaml 并填入 API key
+LLM call failed: Connection refused	网络问题或 API key 错误	检查网络和 config/llm.yaml 中的 endpoint/api_key
+SyntaxError: '|' is not supported	Python 版本过低	必须 Python >= 3.11，推荐 3.13
+PowerShell 中文乱码	编码问题	设置 $env:PYTHONIOENCODING="utf-8"，用脚本文件代替 -c
+soffice not found	LibreOffice 未安装或不在 PATH	安装 LibreOffice 或用 config/renderer.yaml 设 mode: placeholder
+image-analyzer 报错	MCP 未配置	检查 OpenCode MCP 配置中 image-analyzer 是否已连接
+3. 输入材料准备
+3.1 brief.md（必需）
+这是 PPT 的需求说明，Markdown 格式。放在 jobs/<JOB_ID>/input/brief.md。
+
+模板：
+
+# PPT 标题
+
+## Title
+PPT 的正式标题
+
+## 目标受众
+描述观众是谁（如"技术团队、管理层"）
+
+## 目标
+这个 PPT 要达成什么目的（如"汇总问题分析根因并给出改进方案"）
+
+## 核心内容
+- 主题1：简要描述
+- 主题2：简要描述
+- 主题3：简要描述
+
+## 约束
+- 页数：12-15页
+- 语言：中文
+- 风格：专业技术汇报，数据支撑
+​
+示例：
+
+# 相机CP问题综合分析与改进方案 Brief
+
+## Title
+相机CP问题综合分析与改进方案
+
+## 目标受众
+相机团队、ISP团队、项目管理、器件准入团队
+
+## 目标
+汇总近期相机一致性与颜色相关问题，结合器件准入验证要求，分析根因并给出改进方案。
+
+## 核心内容
+- 问题概览：近期CP问题分类、机型分布与趋势
+- Color Ratio偏移：Apollo sensor在不同增益与色温下的color ratio跳变根因
+- BLC跳变：dark current与dgain非线性导致的BLC跳变现象
+- 改进方案：分模块优化计划与时间线
+
+## 约束
+- 12-15页
+- 中文
+- 风格：专业技术汇报，数据支撑，结论先行
+​
+3.2 材料文件（必需）
+放在 jobs/<JOB_ID>/input/materials/ 目录下。
+
+支持的格式：
+
+格式	扩展名	能提取什么	依赖
+PPTX	.pptx	文本、表格、图片、截图	python-pptx (必需)
+PDF	.pdf	文本、表格、图片	pdfplumber (可选)
+Word	.docx	文本、表格	python-docx (必需)
+Excel	.xlsx	表格数据	openpyxl (必需)
+选择材料的建议：
+
+选择与 PPT 主题直接相关的材料文件
+PPTX 材料最有价值 -- 能提取图片和数据图表
+同一内容不要同时放 PPTX 和 PDF 版本（系统会去重，但浪费 LLM 调用时间）
+5-10 个材料文件为宜，太多会显著增加 LLM 分析时间
+每个材料文件不宜过大（<50MB），大文件图片提取慢
+3.3 历史风格库（首次运行需要）
+如果想让生成的 PPT 使用特定风格（颜色、字体、版式），需要先入库历史 PPT（见 Step 6）。风格画像保存在 data/library/styles/style_profile.json，后续所有 job 共享。
+
+4. 操作步骤
+4.1 一键执行（推荐）
+# 1. 创建任务
+conda run --no-capture-output -n py313 python tools\ppt_agent\cli.py job create --title "我的PPT任务"
+# 记下输出的 JOB_ID（如 JOB-20260714-001）
+
+# 2. 放入材料（手动操作）
+#    把 brief.md 放到 jobs\<JOB_ID>\input\brief.md
+#    把材料文件放到 jobs\<JOB_ID>\input\materials\
+
+# 3. 一键执行全链路
+conda run --no-capture-output -n py313 python tools\ppt_agent\cli.py run --job <JOB_ID> --stages all
+
+# 4. 查看结果
+#    PPTX:    jobs\<JOB_ID>\output\final.pptx
+#    预览PNG: jobs\<JOB_ID>\render\slide_*.png
+#    QA报告:  jobs\<JOB_ID>\reports\qa_report.json
+​
+耗时预估（5 个材料文件，15 页 PPT）：
+
+阶段	耗时	说明
+S05 材料入库	~30 秒	
+S05a 元素提取	~1 分钟	
+S05b 核心数据库	~5-10 分钟	LLM 并行分析图片，最耗时
+S06 Deck Plan	~3-5 分钟	两阶段 LLM
+S07a 视觉规划	~2-3 分钟	image_planner + visual_plan
+S07 Slide Spec	~5 秒	纯 Python
+S08 视觉资产	~10 秒	
+S09 PPTX 构建+渲染	~30 秒	
+S10 QA 检查	~10 秒	
+总计	约 12-20 分钟	
+4.2 分步执行（调试用）
+如果只想重跑某个阶段，可以分步执行：
+
+# S05 材料入库
+conda run --no-capture-output -n py313 python tools\ppt_agent\cli.py material ingest --job <JOB_ID>
+
+# S05a 元素提取
+conda run --no-capture-output -n py313 python tools\ppt_agent\cli.py extract-elements --job <JOB_ID>
+
+# S05b 核心数据库（LLM 分析图片，最耗时）
+conda run --no-capture-output -n py313 python tools\ppt_agent\cli.py core-database --job <JOB_ID>
+
+# S06 Deck Plan
+conda run --no-capture-output -n py313 python tools\ppt_agent\cli.py plan build --job <JOB_ID>
+
+# S07a 视觉规划（含 image_planner）
+conda run --no-capture-output -n py313 python tools\ppt_agent\cli.py visual-plan --job <JOB_ID>
+
+# S07 Slide Spec
+conda run --no-capture-output -n py313 python tools\ppt_agent\cli.py spec build --job <JOB_ID>
+
+# S08 视觉资产
+conda run --no-capture-output -n py313 python tools\ppt_agent\cli.py visual build --job <JOB_ID>
+
+# S09 PPTX 构建
+conda run --no-capture-output -n py313 python tools\ppt_agent\cli.py build pptx --job <JOB_ID>
+
+# S09 渲染预览
+conda run --no-capture-output -n py313 python tools\ppt_agent\cli.py render --job <JOB_ID>
+
+# S10 QA 检查
+conda run --no-capture-output -n py313 python tools\ppt_agent\cli.py qa --job <JOB_ID>
+
+# S10 QA 修复（如需）
+conda run --no-capture-output -n py313 python tools\ppt_agent\cli.py repair --job <JOB_ID>
+​
+4.3 断点续跑
+如果管线中途失败，修复问题后可以断点续跑（跳过已通过 gate 的阶段）：
+
+conda run --no-capture-output -n py313 python tools\ppt_agent\cli.py run --job <JOB_ID> --resume
+​
+4.4 查看任务状态
+# 查看任务状态
+conda run --no-capture-output -n py313 python tools\ppt_agent\cli.py status --job <JOB_ID>
+
+# 列出所有任务
+conda run --no-capture-output -n py313 python tools\ppt_agent\cli.py job list
+​
+5. 输出结果说明
+5.1 PPTX 文件
+jobs/<JOB_ID>/output/draft.pptx -- 构建的 PPTX
+jobs/<JOB_ID>/output/final.pptx -- 最终 PPTX（draft 的副本，QA 修复后可能更新）
+5.2 渲染预览
+jobs/<JOB_ID>/render/slide_001.png ~ slide_0NN.png -- 每页的 PNG 预览
+用图片查看器打开可以快速检查 PPT 效果。如果当前 Agent 是纯文本模型，用 image-analyzer MCP 工具查看。
+
+5.3 QA 报告
+jobs/<JOB_ID>/reports/qa_report.json：
+
+{
+  "total_issues": 346,
+  "critical": 0,
+  "warnings": 346,
+  "issues": [
+    {"slide_no": 2, "type": "excessive_text_density", "severity": "warning", "detail": "..."},
+    {"slide_no": 2, "type": "font_too_small", "severity": "warning", "detail": "..."}
+  ]
+}
+​
+严重度说明：
+
+critical -- 严重问题，必须修复（如空页面、图片缺失）
+warning -- 非关键警告（如文本密度高、字号偏小），可以接受
+5.4 中间产物（调试用）
+文件	位置	说明
+core_database.json	state/	提取的所有图片/文本/表格/数据
+deck_plan.json	plan/	演示文稿规划
+image_assignment.json	plan/	图片分配方案
+visual_plan.json	plan/	视觉规划
+slide_XXX.json	specs/	每页规格
+manifest.json	visuals/	资产清单
+image_planning_raw_response.txt	plan/	LLM 原始响应（调试用）
+6. 通过 OpenCode Agent 使用
+6.1 启动 OpenCode
+cd <项目根目录>
+opencode
+​
+OpenCode 会自动识别 opencode.json，默认 Agent 为 ppt-orchestrator。
+
+6.2 一键生成 PPT（推荐）
+直接告诉 Agent：
+
+帮我生成一个PPT，材料在 test_material/CP问题/ 目录下，brief 内容是"相机CP问题综合分析与改进方案"。
+​
+Agent 会：
+
+创建 job
+准备 brief.md 和 materials/
+执行全链路（S05-S11）
+展示结果
+6.3 分步执行（调试用）
+告诉 Agent：
+
+从 visual-plan 阶段重新跑 JOB-20260711-006，我想看看多图分配效果。
+​
+Agent 会执行对应的 CLI 命令并检查结果。
+
+6.4 检查渲染效果
+纯文本模型 Agent 不支持直接读取图片，必须用 image-analyzer MCP 工具：
+
+看一下 slide 4 和 slide 7 的渲染效果，确认多图布局是否正常。
+​
+Agent 会使用 image-analyzer_analyze_images 工具分析 render/slide_004.png 和 render/slide_007.png。
+
+6.5 修改代码后重新验证
+我改了 image_planner.py 的去重逻辑，从 core_database 重新跑 JOB-20260711-006 验证。
+​
+Agent 会：
+
+从 visual-plan 阶段重跑
+检查 image_assignment.json
+检查 copied 目录
+渲染并验证效果（用 image-analyzer）
+git commit
+6.6 OpenCode 自定义命令
+项目在 opencode.json 中定义了以下命令，可直接在 OpenCode 中调用：
+
+命令	说明	调用 Agent
+/sdd-bootstrap	创建或刷新 SDD 规格	ppt-sdd-architect-agent
+/sdd-run-stage	执行一个 SDD 阶段 + gate	ppt-orchestrator
+/sdd-gate	运行阶段门禁审查	ppt-stage-supervisor-agent
+/sdd-run-all	执行所有 SDD 阶段	ppt-orchestrator
+/ppt-run-all	对某个 job 运行完整 PPT 生成	ppt-orchestrator
+/ppt-history-ingest	导入历史 PPT	ppt-history-agent
+/ppt-style-mine	挖掘风格和模板	ppt-style-agent
+/ppt-plan	生成 deck_plan.json	ppt-planner-agent
+/ppt-build	构建 PPTX	ppt-builder-agent
+/ppt-qa	运行 QA 和修复	ppt-reviewer-agent
+6.7 Agent 体系详解
+项目包含 13 个 Agent，分为三类：
+
+主调度：
+
+Agent	模型	职责
+ppt-orchestrator	vibe-coding	主调度，理解用户目标，调用各阶段
+执行 Agent (executor)：
+
+Agent	模型	职责
+ppt-sdd-architect-agent	vibe-coding	SDD 规格维护
+ppt-implementation-agent	vibe-coding	通用实现
+ppt-history-agent	qwen3-vl-235b (多模态)	历史材料入库
+ppt-style-agent	qwen3d6-35b (多模态)	风格挖掘
+ppt-material-agent	qwen3d6-35b (多模态)	本次材料入库
+ppt-planner-agent	vibe-coding	Deck Plan 生成
+ppt-visual-agent	qwen3d6-35b (多模态)	视觉规划与资产生成
+ppt-slide-spec-agent	deepseek-reasoner	Slide Spec 生成
+ppt-builder-agent	deepseek-reasoner	PPTX 构建
+ppt-reviewer-agent	qwen3d6-35b (多模态)	QA 检查修复
+监管 Agent (supervisor)：
+
+Agent	模型	职责
+ppt-stage-supervisor-agent	deepseek-reasoner	阶段监管验收
+ppt-final-auditor-agent	deepseek-reasoner	最终发布审计
+6.8 给接手 Agent 的调用指引
+如果你是接手开发的 Agent，请遵循以下流程：
+
+第一步：了解现状
+
+请阅读以下文件了解项目现状：
+1. AGENTS.md -- 项目规则
+2. docs/handover.md -- 交接文档（含进度、踩坑、待办）
+3. docs/design.md -- 架构设计（含完整管线）
+4. docs/user_guide.md -- 使用指南（本文档）
+5. config/stages.yaml -- 阶段定义
+然后执行 git log --oneline -10 查看最近提交。
+​
+第二步：验证管线可用
+
+从 visual-plan 阶段重跑 JOB-20260711-006，确认管线正常。
+然后检查 render/slide_*.png 渲染效果（用 image-analyzer 工具）。
+​
+第三步：修改代码
+
+改代码前先 git commit 当前状态。
+改代码后先验证 import：conda run -n py313 python -c "import ..."
+然后从相关阶段重跑验证。
+最后 git commit。
+​
+关键纪律：
+
+Python 执行必须用 conda run --no-capture-output -n py313 python ...
+检查图片必须用 image-analyzer MCP 工具，不要用 read 工具读图片
+不要在 PowerShell -c 参数中混用引号和中文，用脚本文件代替
+每次修改前 git commit，方便回退
+不要提交 jobs/、config/llm.yaml、test_material/、PPT_original/
+SDD 规则：每阶段必须通过 gate，不跳过
+不要臆测图片内容 -- 图片信息只能来自 core_database.json
+7. 常用场景
+7.1 场景一：全新生成
+材料：5 个文件（2 PPTX + 1 PDF + 1 DOCX + 1 XLSX）
+目标：生成 15 页 PPT
+​
+# 1. 创建 job
+conda run --no-capture-output -n py313 python tools\ppt_agent\cli.py job create --title "相机CP问题分析"
+
+# 2. 准备输入
+#    写 brief.md -> jobs\<JOB_ID>\input\brief.md
+#    复制材料 -> jobs\<JOB_ID>\input\materials\
+
+# 3. 一键执行
+conda run --no-capture-output -n py313 python tools\ppt_agent\cli.py run --job <JOB_ID> --stages all
+
+# 4. 检查结果
+#    打开 jobs\<JOB_ID>\output\final.pptx
+#    查看 jobs\<JOB_ID>\render\slide_*.png
+​
+7.2 场景二：只改图片分配
+PPT 结构不变，只想重新分配图片：
+
+conda run --no-capture-output -n py313 python tools\ppt_agent\cli.py visual-plan --job <JOB_ID>
+conda run --no-capture-output -n py313 python tools\ppt_agent\cli.py spec build --job <JOB_ID>
+conda run --no-capture-output -n py313 python tools\ppt_agent\cli.py visual build --job <JOB_ID>
+conda run --no-capture-output -n py313 python tools\ppt_agent\cli.py build pptx --job <JOB_ID>
+conda run --no-capture-output -n py313 python tools\ppt_agent\cli.py render --job <JOB_ID>
+conda run --no-capture-output -n py313 python tools\ppt_agent\cli.py qa --job <JOB_ID>
+​
+7.3 场景三：换材料重新生成
+PPT 主题不变，换了部分材料文件：
+
+# 1. 替换 jobs\<JOB_ID>\input\materials\ 中的文件
+# 2. 从 S05a 重新跑
+conda run --no-capture-output -n py313 python tools\ppt_agent\cli.py extract-elements --job <JOB_ID>
+conda run --no-capture-output -n py313 python tools\ppt_agent\cli.py core-database --job <JOB_ID>
+conda run --no-capture-output -n py313 python tools\ppt_agent\cli.py run --job <JOB_ID> --resume
+​
+7.4 场景四：换 brief 重新生成
+材料不变，改了 PPT 需求说明：
+
+# 1. 修改 jobs\<JOB_ID>\input\brief.md
+# 2. 从 S05 重新跑 material ingest（重新解析 brief）
+# 3. 然后从 S06 续跑
+conda run --no-capture-output -n py313 python tools\ppt_agent\cli.py material ingest --job <JOB_ID>
+conda run --no-capture-output -n py313 python tools\ppt_agent\cli.py run --job <JOB_ID> --resume
+​
+7.5 场景五：重新挖掘风格
+历史 PPT 更新了，想重新挖掘风格：
+
+# 1. 更新 PPT_original/ 目录中的 PPT 文件
+# 2. 重新入库
+conda run --no-capture-output -n py313 python tools\ppt_agent\cli.py history ingest --source PPT_original/
+# 3. 重新挖掘
+conda run --no-capture-output -n py313 python tools\ppt_agent\cli.py style mine --profile default
+# 4. 后续新 job 会自动使用新风格
+​
+8. CLI 命令速查
+8.1 常用命令
+# 初始化
+conda run --no-capture-output -n py313 python tools\ppt_agent\cli.py init workspace
+
+# 任务管理
+conda run --no-capture-output -n py313 python tools\ppt_agent\cli.py job create --title "标题"
+conda run --no-capture-output -n py313 python tools\ppt_agent\cli.py job list
+conda run --no-capture-output -n py313 python tools\ppt_agent\cli.py status --job <JOB_ID>
+
+# 一键执行
+conda run --no-capture-output -n py313 python tools\ppt_agent\cli.py run --job <JOB_ID> --stages all
+conda run --no-capture-output -n py313 python tools\ppt_agent\cli.py run --job <JOB_ID> --resume
+
+# 分步执行
+conda run --no-capture-output -n py313 python tools\ppt_agent\cli.py material ingest --job <JOB_ID>
+conda run --no-capture-output -n py313 python tools\ppt_agent\cli.py extract-elements --job <JOB_ID>
+conda run --no-capture-output -n py313 python tools\ppt_agent\cli.py core-database --job <JOB_ID>
+conda run --no-capture-output -n py313 python tools\ppt_agent\cli.py plan build --job <JOB_ID>
+conda run --no-capture-output -n py313 python tools\ppt_agent\cli.py visual-plan --job <JOB_ID>
+conda run --no-capture-output -n py313 python tools\ppt_agent\cli.py spec build --job <JOB_ID>
+conda run --no-capture-output -n py313 python tools\ppt_agent\cli.py visual build --job <JOB_ID>
+conda run --no-capture-output -n py313 python tools\ppt_agent\cli.py build pptx --job <JOB_ID>
+conda run --no-capture-output -n py313 python tools\ppt_agent\cli.py render --job <JOB_ID>
+conda run --no-capture-output -n py313 python tools\ppt_agent\cli.py qa --job <JOB_ID>
+conda run --no-capture-output -n py313 python tools\ppt_agent\cli.py repair --job <JOB_ID>
+
+# 历史库
+conda run --no-capture-output -n py313 python tools\ppt_agent\cli.py history ingest --source PPT_original/
+conda run --no-capture-output -n py313 python tools\ppt_agent\cli.py style mine --profile default
+
+# 门禁
+conda run --no-capture-output -n py313 python tools\ppt_agent\cli.py gate --stage S06 --job <JOB_ID>
+
+# 健康检查
+conda run --no-capture-output -n py313 python tools\ppt_agent\cli.py doctor
+
+# 发布审计
+conda run --no-capture-output -n py313 python tools\ppt_agent\cli.py release-audit
+​
+8.2 参数说明
+参数	说明
+--job <JOB_ID>	指定任务 ID（如 JOB-20260711-006）
+--title "标题"	创建任务时指定标题
+--stages all	运行所有阶段
+--resume	断点续跑
+--stage S0X	指定门禁检查的阶段
+--source <DIR>	历史材料来源目录
+--profile default	风格画像名称
+9. 常见问题
+Q1: 生成的 PPT 图片太少怎么办？
+原因：可能材料中的图片数量少，或者 LLM 偏保守只给每页分配 1 张。
+
+解决：
+
+检查 jobs/<JOB_ID>/state/core_database.json 中有多少张 reusable 图片
+检查 jobs/<JOB_ID>/plan/image_assignment.json 中每页分配了几张
+如果 LLM 分配太少，可以重跑 visual-plan（LLM 有随机性，重跑可能得到不同结果）
+Q2: copied 目录有重复图片怎么办？
+原因：这是 Round 8 已修复的问题。确保使用最新代码（git commit 0c3396e 之后）。
+
+Q3: LLM 调用失败怎么办？
+原因：可能是网络问题、API key 错误、或 LLM 思考过程过长导致 max_tokens 耗尽。
+
+解决：
+
+检查 config/llm.yaml 中的 api_key 和 endpoint
+检查网络连接
+查看 jobs/<JOB_ID>/plan/image_planning_raw_response.txt 看 LLM 返回了什么
+重跑该阶段（LLM 有随机性）
+S05b 核心数据库支持断点续跑，中途失败后重跑会跳过已分析的图片
+Q4: PPT 文字太密怎么办？
+原因：key_points 不截断，内容完整度高，导致文本密度 warning。
+
+解决：这是已知的非关键 warning。如果希望文字更少：
+
+修改 brief.md 中的约束（如"每页不超过 5 个要点"）
+重跑 plan build 和后续阶段
+Q5: 耗时太长怎么办？
+原因：S05b 核心数据库阶段最耗时（LLM 逐张分析图片）。
+
+解决：
+
+减少材料文件数量
+S05b 支持断点续跑 -- 中途失败后重跑会跳过已分析的图片
+调大 config/llm.yaml 中的 max_workers（如 6 或 8）增加并行度
+Q6: 如何更换 LLM 模型？
+修改 config/llm.yaml 中的 multimodal_model 字段。所有阶段默认使用 qwen3d6-35b。如果换成非多模态模型，图片分析功能会受限。
+
+Q7: 渲染预览是占位图怎么办？
+原因：LibreOffice 未安装或不在 PATH 中，系统 fallback 到 Pillow 占位图。
+
+解决：
+
+安装 LibreOffice
+确保 soffice 在 PATH
+或在 config/renderer.yaml 中设 mode: placeholder 接受占位图
+Q8: PDF 材料解析失败怎么办？
+原因：pdfplumber 未安装。
+
+解决：conda run -n py313 pip install pdfplumber>=0.9
+
+10. 关键纪律总结
+Python 环境：必须用 conda run --no-capture-output -n py313 python ...
+编码：设置 $env:PYTHONIOENCODING="utf-8"，脚本开头声明 # -*- coding: utf-8 -*-
+PowerShell：不要在 -c 参数中混用引号和中文，用脚本文件代替
+图片分析：纯文本模型 Agent 必须用 image-analyzer MCP 工具，不要用 read 工具读图片
+Git：不要提交 jobs/ config/llm.yaml test_material/ PPT_original/
+LLM 耗时：core_database 阶段 5-10 分钟，其他阶段 1-5 分钟，设置足够的 timeout
+SDD 规则：每阶段必须通过 gate，不跳过
+不臆测图片：图片信息只能来自 core_database.json 中的 description
+改代码前先 commit：方便回退
+所有操作走 CLI：python tools/ppt_agent/cli.py，不要创建一次性脚本

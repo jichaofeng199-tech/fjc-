@@ -1,0 +1,311 @@
+# -*- coding: utf-8 -*-
+"""
+MSC线性标定(min expo) V2:
+1. 固定ISO, expo从min(45)遍历到当前上限(1045)的3倍(≈3135), 步长先密后疏;
+2. 取中心100x100区域计算16个通道的CR值(通道均值 - BLC64);
+3. 画每个通道CR随expo的线性图(4x4分图 + 全通道总图);
+4. 计算每个通道 / 16通道总和 的ratio并画图, 图上标注数值;
+5. 单独输出遍历中最大通道均值最接近2000DN时对应的expo值.
+"""
+import os
+import time
+import subprocess
+import re
+import numpy as np
+import matplotlib.pyplot as plt
+
+# ==================== 可配置参数 ====================
+MIN_EXPO = 10000         # 最小曝光时间(遍历起点)
+MAX_EXPO = 300000
+ISO = 256          # 固定ISO
+BLC = 64               # 黑电平
+CENTOR_SIZE = 100      # 中心区域大小 100x100
+TARGET_DN = 8000       # 目标: 最大通道均值≈2000DN
+PHONENAME = "7ZK0126710000303"
+# ====================================================
+
+
+def getPermission(phonename):
+    # 获取权限
+    os.system("hdc -t {0} shell mount -o rw,remount /".format(phonename))
+    os.system("hdc -t {0} shell mount -o rw,remount /odm".format(phonename))
+    os.system("hdc -t {0} shell mount -o rw,remount /vendor".format(phonename))
+
+
+def rmPic(phonename):
+    print("清空手机")
+    os.system("hdc -t {0} shell rm -rf /data/vendor/camera/img/raw/*".format(phonename))
+
+
+def pick_raw(phonename, expo_path):
+    # 找到raw文件, 按序号排序后取中间两张导出
+    command = "hdc -t {0} shell find /data/vendor/camera/img/raw/back -name C071NQK_*.raw".format(phonename)
+    result = subprocess.run(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    raw_dict = {}
+    if result.returncode == 0:
+        raw_files = result.stdout.splitlines()
+        for file in raw_files:
+            match = re.search(r'\((\d+)\)', file)
+            if match:
+                number = match.group(1)
+            else:
+                print("未找到括号内的数字")
+                number = "0"
+            raw_dict[file] = number
+        sorted_raw = sorted(raw_dict.items(), key=lambda x: int(x[1]))
+        raw_len = len(sorted_raw)
+        if raw_len % 2 == 0:
+            middle_index1 = raw_len // 2 - 1
+            middle_index2 = raw_len // 2
+        else:
+            middle_index1 = (raw_len - 1) // 2 - 1
+            middle_index2 = (raw_len - 1) // 2
+        print("导出", sorted_raw[middle_index1][0], sorted_raw[middle_index2][0])
+        os.system("hdc -t {0} file recv {1} {2}".format(phonename, sorted_raw[middle_index1][0], expo_path))
+        os.system("hdc -t {0} file recv {1} {2}".format(phonename, sorted_raw[middle_index2][0], expo_path))
+    else:
+        print("命令执行失败，错误信息：")
+        print(result.stderr)
+
+
+def take_raw(phonename, DN_path, num):
+    for i in range(0, num):
+        # 清空手机
+        rmPic(phonename)
+        time.sleep(3)
+        os.system(
+            "hdc -t {0} shell aa start -a com.huawei.hmos.camera.MainAbility -b com.huawei.hmos.camera --ps 'camerashell' 'cameraPosition=back mode=PHOTO zoom=1.0 isCapture=false'".format(
+                phonename))  # 进入相机
+        time.sleep(3)
+        os.system("hdc -t {0} shell uinput -K -d 17 -u 17".format(phonename))  # 模拟点击拍照
+        time.sleep(3)
+        os.system("hdc -t {0} shell aa force-stop com.huawei.hmos.camera".format(phonename))  # 关闭相机
+        time.sleep(3)
+        # 挑raw并导出
+        pick_raw(phonename, DN_path)
+
+
+def centor_stat16(raw_name, centorsize=CENTOR_SIZE):
+    """中心centorsize x centorsize区域, 返回16个通道的原始均值(np数组, 长度16)"""
+    H = 760
+    W = 1024
+
+    raw = np.fromfile(raw_name, dtype=np.uint16)[:H * W].reshape(H, W).astype(float)
+
+    # 将数据重塑为(190, 256, 16)的三维数组, 16通道按4x4 mosaic排列
+    reshaped_raw = raw.reshape(190, 4, 256, 4)
+    reshaped_raw = reshaped_raw.transpose(0, 2, 1, 3).reshape(190, 256, 16)
+
+    # 计算中心区域坐标
+    height, width, _ = reshaped_raw.shape
+    start_row = (height - centorsize) // 2
+    start_col = (width - centorsize) // 2
+
+    # 提取中心区域
+    center_region = reshaped_raw[start_row:start_row + centorsize, start_col:start_col + centorsize, :]
+
+    # 每个通道的平均值(原始均值, 未扣BLC)
+    channel_means = center_region.mean(axis=(0, 1))
+    return channel_means
+
+
+def build_expo_list(min_expo=MIN_EXPO, max_expo=MAX_EXPO):
+    """
+    生成expo遍历列表: 步长先密后疏
+    段划分: (步长, 段结束值), 越靠前步长越小(密), 越靠后步长越大(疏)
+    """
+    segments = [
+        (500, 10000),  # 45~150   步长15 (最密)
+        (1200, 30000),  # ~1800    步长120
+        (9000, 300000),  # ~3135    步长240 (最疏)
+    ]
+    expo_list = []
+    cur = min_expo
+    for step, seg_end in segments:
+        e = cur
+        while e <= seg_end:
+            expo_list.append(e)
+            e += step
+        cur = e
+    if expo_list[-1] < max_expo:
+        # 终点处理: 保证步长仍然先密后疏
+        gap = max_expo - expo_list[-1]
+        step_last = expo_list[-1] - expo_list[-2]
+        if gap < step_last / 2:
+            # 距离很近, 直接把最后一个点替换为终点
+            expo_list[-1] = max_expo
+        else:
+            expo_list.append(max_expo)
+    return expo_list
+
+
+def draw_channel_linear(expo_arr, cr_matrix, dst_path, iso):
+    """16通道CR-expo线性图: 4x4分图"""
+    n = cr_matrix.shape[1]
+    fig, axes = plt.subplots(4, 4, figsize=(20, 16))
+    for i in range(n):
+        ax = axes[i // 4][i % 4]
+        ax.plot(expo_arr, cr_matrix[:, i], marker='o', markersize=3, linewidth=1)
+        ax.set_title("CH{0}".format(i), fontsize=10)
+        ax.set_xlabel("expo", fontsize=8)
+        ax.set_ylabel("CR(DN)", fontsize=8)
+        ax.grid(True)
+    fig.suptitle("CR vs expo (center {0}x{0}, BLC={1}, ISO={2})".format(CENTOR_SIZE, CENTOR_SIZE, BLC, iso), fontsize=14)
+    fig.tight_layout(rect=[0, 0, 1, 0.97])
+    pic_path = os.path.join(dst_path, "{0}_16channels_CR_vs_expo.png".format(iso))
+    fig.savefig(pic_path, dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    print("已保存:", pic_path)
+
+
+def draw_channel_all(expo_arr, cr_matrix, dst_path, iso):
+    """全通道CR-expo线性图: 单图16条曲线"""
+    fig, ax = plt.subplots(figsize=(14, 9))
+    for i in range(cr_matrix.shape[1]):
+        ax.plot(expo_arr, cr_matrix[:, i], marker='o', markersize=3, linewidth=1, label="CH{0}".format(i))
+    ax.set_xlabel("expo")
+    ax.set_ylabel("CR(DN)")
+    ax.set_title("All channels CR vs expo (ISO={0})".format(iso))
+    ax.grid(True)
+    ax.legend(ncol=4, fontsize=8)
+    pic_path = os.path.join(dst_path, "{0}_allchannels_CR_vs_expo.png".format(iso))
+    fig.savefig(pic_path, dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    print("已保存:", pic_path)
+
+
+def draw_ratio(expo_arr, ratio_matrix, dst_path, iso):
+    """16通道ratio(通道CR/16通道CR之和)随expo变化图, 每个点标注数值: 4x4分图"""
+    n = ratio_matrix.shape[1]
+    fig, axes = plt.subplots(4, 4, figsize=(24, 18))
+    for i in range(n):
+        ax = axes[i // 4][i % 4]
+        ax.plot(expo_arr, ratio_matrix[:, i], marker='o', markersize=3, linewidth=1, color='tab:blue')
+        for x, y in zip(expo_arr, ratio_matrix[:, i]):
+            ax.annotate("{0:.3f}".format(y), (x, y), textcoords="offset points",
+                        xytext=(0, 4), fontsize=4.5, rotation=90, ha='center', color='tab:red')
+        ax.set_title("CH{0}".format(i), fontsize=10)
+        ax.set_xlabel("expo", fontsize=8)
+        ax.set_ylabel("ratio", fontsize=8)
+        ax.grid(True)
+    fig.suptitle("CH ratio = CR / sum(16ch CR) vs expo (ISO={0})".format(iso), fontsize=14)
+    fig.tight_layout(rect=[0, 0, 1, 0.97])
+    pic_path = os.path.join(dst_path, "{0}_16channels_ratio_vs_expo.png".format(iso))
+    fig.savefig(pic_path, dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    print("已保存:", pic_path)
+
+
+def find_target_expo(expo_arr, mean_matrix, cr_matrix, dst_path, target=TARGET_DN):
+    """单独输出: 遍历中最大通道均值最接近target DN的expo(取最接近的实测点)"""
+    max_mean_per_expo = mean_matrix.max(axis=1)
+    max_ch_idx = mean_matrix.argmax(axis=1)
+    # 找最接近target的实测点
+    idx = int(np.argmin(np.abs(max_mean_per_expo - target)))
+    best_expo = int(expo_arr[idx])
+    best_mean = float(max_mean_per_expo[idx])
+    best_ch = int(max_ch_idx[idx])
+    best_cr = float(cr_matrix[idx, best_ch])
+
+    # 相邻点信息, 便于判断
+    lines = []
+    lines.append("目标: min expo遍历中, 最大通道均值最接近 {0} DN 对应的expo值(取最接近的实测点)".format(target))
+    lines.append("expo = {0}".format(best_expo))
+    lines.append("该expo下最大通道: CH{0}, 均值 = {1:.1f} DN, 扣BLC后CR = {2:.1f} DN".format(best_ch, best_mean, best_cr))
+    if idx > 0:
+        lines.append("相邻前一点: expo={0}, 最大通道均值={1:.1f}".format(int(expo_arr[idx - 1]), float(max_mean_per_expo[idx - 1])))
+    if idx < len(expo_arr) - 1:
+        lines.append("相邻后一点: expo={0}, 最大通道均值={1:.1f}".format(int(expo_arr[idx + 1]), float(max_mean_per_expo[idx + 1])))
+
+    report = "\n".join(lines)
+    print("\n" + "=" * 60)
+    print(report)
+    print("=" * 60 + "\n")
+
+    out_path = os.path.join(dst_path, "expo_at_max_channel_{0}DN.txt".format(target))
+    with open(out_path, 'w', encoding='utf-8') as f:
+        f.write(report + "\n")
+    print("已单独输出:", out_path)
+    return best_expo
+
+
+if __name__ == '__main__':
+    dst_path = r'D:\f60124548\1111MSC\14bit\D50\iso256'
+    iso = ISO
+    phonename = PHONENAME
+
+    os.makedirs(dst_path, exist_ok=True)
+    # 清空手机
+    rmPic(phonename)
+
+    os.system("hdc -t {0} shell param set vendor.camera.manual_ae.flag 1".format(phonename))
+    os.system("hdc -t {0} shell param set vendor.manual_ae.msc.gain.value {1}".format(phonename, iso))
+
+    expo_list = build_expo_list(MIN_EXPO, MAX_EXPO)
+    print("expo遍历列表(步长先密后疏, 共{0}点):".format(len(expo_list)))
+    print(expo_list)
+
+    log_path = os.path.join(dst_path, "CR_log.txt")
+    cr_matrix = []      # 每行: 16通道CR(均值-64), 已对多张raw取平均
+    mean_matrix = []    # 每行: 16通道原始均值
+    for expo in expo_list:
+        expo_path = os.path.join(dst_path, str(expo))
+        os.makedirs(expo_path, exist_ok=True)
+
+        os.system("hdc -t {0} shell param set vendor.manual_ae.msc.expotime.value ".format(phonename) + str(expo))
+        take_raw(phonename, expo_path, 1)
+        raw_list = os.listdir(expo_path)
+        ch_means_list = []
+        for raw in raw_list:
+            raw_name = os.path.join(expo_path, raw)
+            ch_means = centor_stat16(raw_name)
+            print("expo={0}, raw={1}".format(expo, raw))
+            print("16个通道的平均值:", np.round(ch_means, 1))
+            ch_means_list.append(ch_means)
+        # 多张raw按通道取平均
+        ch_mean_avg = np.mean(np.array(ch_means_list), axis=0)
+        ch_cr = ch_mean_avg - BLC
+        cr_matrix.append(ch_cr)
+        mean_matrix.append(ch_mean_avg)
+        print("=========expo={0}, 16通道CR(均值-{1}):".format(expo, BLC), np.round(ch_cr, 1))
+
+        # 记录log
+        with open(log_path, 'a', encoding='utf-8') as f:
+            f.write("expo={0}\n".format(expo))
+            f.write("mean16={0}\n".format(np.array2string(ch_mean_avg, precision=2, separator=',')))
+            f.write("cr16={0}\n".format(np.array2string(ch_cr, precision=2, separator=',')))
+        print("log更新")
+
+    expo_arr = np.array(expo_list, dtype=float)
+    cr_matrix = np.array(cr_matrix)
+    mean_matrix = np.array(mean_matrix)
+
+    # ratio = 每通道CR / 16通道CR之和
+    cr_sum = cr_matrix.sum(axis=1, keepdims=True)
+    ratio_matrix = cr_matrix / cr_sum
+
+    # 数据汇总csv
+    csv_path = os.path.join(dst_path, "CR_data.csv")
+    with open(csv_path, 'w', encoding='utf-8') as f:
+        header = "expo," + ",".join("mean_ch{0}".format(i) for i in range(16)) + "," \
+                 + ",".join("cr_ch{0}".format(i) for i in range(16)) + "," \
+                 + ",".join("ratio_ch{0}".format(i) for i in range(16))
+        f.write(header + "\n")
+        for k in range(len(expo_list)):
+            row = [str(expo_list[k])] \
+                  + ["{0:.2f}".format(v) for v in mean_matrix[k]] \
+                  + ["{0:.2f}".format(v) for v in cr_matrix[k]] \
+                  + ["{0:.5f}".format(v) for v in ratio_matrix[k]]
+            f.write(",".join(row) + "\n")
+    print("数据汇总已保存:", csv_path)
+
+    # 画图: 每通道CR随expo线性图
+    draw_channel_linear(expo_arr, cr_matrix, dst_path, iso)
+    draw_channel_all(expo_arr, cr_matrix, dst_path, iso)
+
+    # 画图: 每通道ratio随expo变化(带数值标注)
+    draw_ratio(expo_arr, ratio_matrix, dst_path, iso)
+
+    # 单独输出: 最大通道均值≈2000DN对应的expo
+    best_expo = find_target_expo(expo_arr, mean_matrix, cr_matrix, dst_path, TARGET_DN)
+    print("最大通道均值最接近{0}DN对应的expo = {1}".format(TARGET_DN, best_expo))

@@ -1,0 +1,197 @@
+import os
+from pathlib import Path
+import numpy as np
+
+
+def unpack_raw_new(file_path, width, height, is_shdr=0):
+    """
+    直接读取 16-bit RAW 数据
+    假设数据是 Little-Endian (大多数情况)
+    如果是 Big-Endian，请改为 '<i2' 为 '>i2'
+    """
+    # 读取所有字节
+    input_raw = np.fromfile(file_path, dtype=np.uint8)
+
+    # 检查文件大小是否符合预期 (width * height * 2)
+    expected_size = width * height * 2
+    if len(input_raw) != expected_size:
+        # 如果文件包含 Header，尝试跳过前 N 字节 (例如 1024, 2048 等)
+        # 这里假设没有 Header，如果有 Header 需要手动调整 offset
+        # 如果报错，请打印 len(input_raw) 并手动减去 Header 大小
+        pass
+
+        # 将 uint8 数组重塑为 int16 (16-bit 整数)
+    # dtype=np.int16 会自动处理字节序为系统默认，通常 Linux/Win 是 Little-Endian
+    # 如果数据是 Big-Endian，请改为 np.fromfile(...).view('>i2') 或类似操作
+    # 这里假设是 Little-Endian，使用 np.int16 读取
+    img_16bit = np.fromfile(file_path, dtype=np.int16)
+
+    # 如果上面的 int16 读取顺序不对（比如读出来全是负数或异常大），
+    # 可以尝试强制指定字节序: img_16bit = np.fromfile(file_path, dtype='>i2') (Big-Endian)
+
+    # 重塑为 (height, width)
+    # 注意：np.fromfile 读取后是一维数组，需要 reshape
+    img_bayer = img_16bit.reshape(height, width)
+
+    return img_bayer
+
+
+def read_raw_2(path, pattern, bits, blc_offset, is_pack_raw=True):
+    # 从文件名中提取宽高信息
+    filename = os.path.basename(path)
+    parts = filename.split('_')
+
+    if len(parts) >= 6:
+        try:
+            width_str = parts[-6]
+            height_str = parts[-5]
+            width = int(width_str)
+            height = int(height_str)
+            rawShape = (height, width)
+        except (ValueError, IndexError):
+            raise ValueError(f"文件名格式不符合预期，无法解析宽高信息: {filename}")
+    else:
+        raise ValueError(f"文件名部分数量不足，无法解析宽高信息: {filename}")
+
+    # 【重要修改】
+    # 既然数据实际上是 16-bit 的，我们直接读取 16-bit 值
+    # 无论传入的 bits 是多少，底层数据是 16-bit
+    img_bayer = unpack_raw_new(path, width, height, is_shdr=0)
+
+    # 确保数据在正确范围内
+    # 16-bit 有符号范围是 -32768 到 32767，无符号是 0 到 65535
+    # 如果传感器输出是无符号 16-bit，可能需要转换
+    # 这里假设传感器输出的是有符号 16-bit 或者已经偏移过的
+    # 如果读出来是负数，说明字节序可能反了，或者需要 + 32768
+
+    # 简单的字节序检查：如果最大值异常小或全是负数，尝试反转字节序
+    if img_bayer.min() < 0:
+        # 尝试转换为无符号 16-bit 解释 (假设底层数据其实是无符号的，只是被解释为有符号)
+        # 或者尝试 Big-Endian
+        # 这里先保持原样，如果后续处理有问题，再调整
+        pass
+
+    rgb_height = (rawShape[0] >> 1)
+    rgb_width = (rawShape[1] >> 1)
+    rgb = np.ones((rgb_height, rgb_width, 3))
+
+    # Bayer 到 RGB 插值 (简单平均法，即原代码逻辑)
+    if pattern == 'BGGR':
+        rgb[..., 0] = img_bayer[1::2, 1::2]
+        rgb[..., 1] = (img_bayer[1::2, ::2] + img_bayer[::2, 1::2]) / 2
+        rgb[..., 2] = img_bayer[::2, ::2]
+    elif pattern == 'GRBG':
+        rgb[..., 0] = img_bayer[::2, 1::2]
+        rgb[..., 1] = (img_bayer[::2, ::2] + img_bayer[1::2, 1::2]) / 2
+        rgb[..., 2] = img_bayer[1::2, ::2]
+    elif pattern == 'GBRG':
+        rgb[..., 0] = img_bayer[1::2, ::2]
+        rgb[..., 1] = (img_bayer[::2, ::2] + img_bayer[1::2, 1::2]) / 2
+        rgb[..., 2] = img_bayer[::2, 1::2]
+    elif pattern == 'RGGB':
+        rgb[..., 0] = img_bayer[::2, ::2]
+        rgb[..., 1] = (img_bayer[::2, 1::2] + img_bayer[1::2, ::2]) / 2
+        rgb[..., 2] = img_bayer[1::2, 1::2]
+
+    # 数据类型转换，防止后续计算溢出
+    rgb = rgb.astype(np.float32)
+
+    if blc_offset:
+        # 对于 16-bit 数据，黑电平 (Dark Level) 需要确认
+        # 常见 12-bit 传感器在 16-bit 模式下，黑电平可能是 256 << 4 = 4096 或其他值
+        # 这里暂时沿用你之前的逻辑，但请注意 darkval 可能需要调整
+        if bits == 10:
+            darkval = 64
+        elif bits == 12:
+            darkval = 256  # 如果传感器是 12-bit 采样，但在 16-bit 文件中，黑电平可能还是 256
+        elif bits == 14:
+            darkval = 1024
+        elif bits == 16:
+            darkval = 4096  # 假设 16-bit 模式下的黑电平
+        else:
+            darkval = 0
+
+        # 裁剪到合理范围
+        # 16-bit 最大值 65535
+        rgb = (rgb - darkval).clip(0, 65535)
+
+    return rgb
+
+
+def process_raw_files(raw_dir, pattern, bits, blc_offset):
+    raw_dir = Path(raw_dir)
+    print(f"目标路径：{raw_dir}")
+    results = []
+
+    for raw_file in raw_dir.glob('*.raw'):
+        try:
+            rgb_data = read_raw_2(str(raw_file), pattern, bits, blc_offset)
+        except Exception as e:
+            print(f"Error processing {raw_file.name}: {e}")
+            continue
+
+        if rgb_data is None or rgb_data.shape[0] == 0:
+            continue
+
+        results.append({
+            'file': raw_file.name,
+            'data': rgb_data,
+            'center_r': None,
+            'center_g': None,
+            'center_b': None
+        })
+
+        center_row = (rgb_data.shape[0] - 1) // 2
+        center_col = (rgb_data.shape[1] - 1) // 2
+
+        # 确保索引不越界
+        if center_row >= rgb_data.shape[0] or center_col >= rgb_data.shape[1]:
+            continue
+
+        g_value = rgb_data[center_row, center_col, 1]
+        r_value = rgb_data[center_row, center_col, 0]
+        b_value = rgb_data[center_row, center_col, 2]
+
+        results[-1]['center_r'] = r_value
+        results[-1]['center_g'] = g_value
+        results[-1]['center_b'] = b_value
+
+        print(f"File: {raw_file.name} | R: {r_value:.1f}, G: {g_value:.1f}, B: {b_value:.1f}")
+
+    print(f"批量处理完成，共处理 {len(results)} 个RAW文件")
+    return results
+
+
+def process_raw_data_and_generate_report(target_dir, pattern, bits):
+    """处理RAW数据并生成DN值记录报告"""
+    all_results = []
+
+    for sub_dir in os.listdir(target_dir):
+        target_subdir = os.path.join(target_dir, sub_dir)
+        if os.path.isdir(target_subdir):
+            results = process_raw_files(target_subdir, pattern, bits, True)
+            if results:
+                all_results.extend(results)
+
+    if not all_results:
+        print("所有子目录均未找到有效RAW文件，跳过此次循环。")
+        return
+
+    output_file = os.path.join(target_dir, "DN_values_Records.txt")
+    with open(output_file, 'w') as f:
+        for result in all_results:
+            f.write(f"File: {result['file']}\n")
+            # 保留一位小数，因为经过了插值
+            f.write(
+                f"Center R: {result['center_r']:.2f}, Center G: {result['center_g']:.2f}, Center B: {result['center_b']:.2f}\n")
+            f.write("-" * 50 + "\n")
+
+    print(f"DN值记录文件已生成: {output_file}")
+
+
+if __name__ == '__main__':
+    target_dir = r"D:\share\CTE\小DN\20-1100step50"
+    pattern = "BGGR"
+    bits = 12  # 虽然数据是16-bit容器，但传感器可能是12-bit采样，黑电平可能仍参考12-bit逻辑
+    # 注意：如果解出来的颜色全黑或全白，请尝试修改 bits 参数或 darkval 的值
+    process_raw_data_and_generate_report(target_dir, pattern, bits)

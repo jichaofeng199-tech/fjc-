@@ -1,0 +1,191 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+手机手动曝光循环拍照脚本 (三段步长版)
+曝光时间分段:
+  100  ~ 6000  us, 步长 100
+  6100 ~ 12000 us, 步长 200
+  12100 ~ 26000 us, 步长 500
+每档拍一张
+
+关键修正:
+- 每次拍照前都重新设置 AE 参数, 并等待参数生效
+- 设置曝光后增加校验和额外等待, 避免"下一张才生效"
+- 统一使用 hdc, 不再混用 adb
+"""
+
+import subprocess
+import time
+import os
+import sys
+
+# ---------- 配置 ----------
+SAVE_DIR = "./photos"
+ISO_VALUE = 50
+WAIT_AFTER_SET = 2.0        # 设置参数后等待 (秒)
+WAIT_BEFORE_SHOT = 1.0      # 触发拍照前额外等待 (秒)
+WAIT_AFTER_SHOT = 2.0       # 触发拍照后等待 (秒)
+PULL_PHOTO = False          # 是否自动拉取照片
+PHONE_PHOTO_DIR = "/sdcard/DCIM/Camera/"  # 手机相册路径
+
+CAMERA_BUNDLE = "com.huawei.hmos.camera"
+CAMERA_ABILITY = "com.huawei.hmos.camera.MainAbility"
+
+# 曝光时间分段: (起点, 终点, 步长), 终点包含
+EXPOSURE_SEGMENTS = [
+    (100,   6000,  100),
+    (6100,  20000, 500),
+    (36100, 40000, 1000),
+    (40100, 75000, 2000),
+]
+# ---------------------------
+
+
+def run(cmd, check=False, capture=True):
+    """执行 hdc 命令"""
+    print(f"[CMD] {cmd}")
+    result = subprocess.run(cmd, shell=True, capture_output=capture, text=True)
+    if capture:
+        if result.stdout and result.stdout.strip():
+            print(f"[OUT] {result.stdout.strip()}")
+        if result.stderr and result.stderr.strip():
+            print(f"[ERR] {result.stderr.strip()}")
+    if check and result.returncode != 0:
+        print(f"[FAIL] 命令返回 {result.returncode}")
+    return result
+
+
+def set_manual_ae(exp_us, iso=ISO_VALUE):
+    """
+    统一设置手动 AE 全部参数
+    每次拍照前都调用, 确保参数被重新写入
+    """
+    run("hdc shell param set vendor.debug.smartae.enable 0")
+    run("hdc shell param set vendor.camera.manual_ae.flag 1")
+    run(f"hdc shell param set vendor.manual_ae.iso.value {iso}")
+    run(f"hdc shell param set vendor.manual_ae.expotime.value {exp_us}")
+
+
+def verify_expotime(expected):
+    """
+    读取当前 expotime 参数, 确认是否与期望值一致
+    """
+    result = subprocess.run(
+        "hdc shell param get vendor.manual_ae.expotime.value",
+        shell=True, capture_output=True, text=True
+    )
+    actual = result.stdout.strip()
+    print(f"[VERIFY] 期望={expected}  实际={actual}")
+    return actual == str(expected)
+
+
+def open_camera():
+    """打开相机 App"""
+    run(f"hdc shell aa start -a {CAMERA_ABILITY} -b {CAMERA_BUNDLE}")
+
+
+def back_to_home():
+    """返回桌面 (KEYCODE_HOME = 3)"""
+    run("hdc shell uinput -K -d 3 -u 3")
+
+
+def take_photo():
+    """
+    触发拍照
+    方式 A: uinput 按键 17 (KEYCODE_CAMERA)
+    方式 B: input keyevent 25 (音量下键), 备选
+    """
+    run("hdc shell uinput -K -d 17 -u 17")
+    # run("hdc shell input keyevent 25")
+
+
+def build_exposure_list():
+    """
+    根据 EXPOSURE_SEGMENTS 生成所有曝光值列表
+    每段: range(start, end+1, step)
+    """
+    exp_list = []
+    for start, end, step in EXPOSURE_SEGMENTS:
+        exp_list.extend(range(start, end + 1, step))
+    return exp_list
+
+
+def main():
+    # os.makedirs(SAVE_DIR, exist_ok=True)
+
+    print("=" * 50)
+    print("初始化: 关闭 SmartAE, 打开手动 AE")
+    print("=" * 50)
+    set_manual_ae(100)   # 先用第一个曝光值
+    time.sleep(1)
+
+    # 打开相机 (只需一次)
+    print("=" * 50)
+    print("打开相机 App")
+    print("=" * 50)
+    open_camera()
+    time.sleep(5)
+
+    # 生成曝光序列
+    exp_list = build_exposure_list()
+    total = len(exp_list)
+
+    print()
+    print("=" * 50)
+    print(f"开始循环拍照, 共 {total} 档")
+    print("  100  ~ 6000  us, 步长 100")
+    print("  6100 ~ 12000 us, 步长 200")
+    print("  12100 ~ 26000 us, 步长 500")
+    print("=" * 50)
+
+    for idx, exp in enumerate(exp_list, 1):
+        print()
+        print(f"===== [{idx}/{total}] 曝光时间 = {exp} us =====")
+
+        # 1. 返回桌面
+        back_to_home()
+        time.sleep(1)
+
+        # 2. 重新设置全部 AE 参数
+        set_manual_ae(exp)
+        time.sleep(WAIT_AFTER_SET)
+
+        # 3. 校验参数
+        if not verify_expotime(exp):
+            print(f"[WARN] 曝光参数未生效! 期望 {exp}, 重试一次...")
+            set_manual_ae(exp)
+            time.sleep(WAIT_AFTER_SET)
+
+        # 4. 打开相机
+        open_camera()
+        time.sleep(5)
+
+        # 5. 拍照前等待
+        time.sleep(WAIT_BEFORE_SHOT)
+
+        # 6. 触发拍照
+        take_photo()
+        time.sleep(WAIT_AFTER_SHOT)
+
+        # 7. 可选: 拉取照片
+        if PULL_PHOTO:
+            result = subprocess.run(
+                f"hdc shell ls -t {PHONE_PHOTO_DIR} | head -1",
+                shell=True, capture_output=True, text=True
+            )
+            latest = result.stdout.strip()
+            if latest:
+                local_name = os.path.join(SAVE_DIR, f"exp_{exp:05d}_{latest}")
+                run(f'hdc file recv "{PHONE_PHOTO_DIR}{latest}" "{local_name}"')
+
+        print(f"[DONE] {exp} us 完成")
+
+    print()
+    print("=" * 50)
+    print(f"全部完成! 共 {total} 张")
+    print(f"照片保存在: {SAVE_DIR}")
+    print("=" * 50)
+
+
+if __name__ == "__main__":
+    main()
